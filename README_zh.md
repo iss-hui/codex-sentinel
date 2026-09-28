@@ -85,13 +85,14 @@ codex-sentinel --status
 ### 命令行参数详解
 
 ```text
-用法: codex-sentinel [-h] [-v] [--buffer BUFFER] [--prompt PROMPT] [--no-relaunch] [--dry-run] [--status]
+用法: codex-sentinel [-h] [-v] [--lang {auto,zh,en}] [--buffer BUFFER] [--prompt PROMPT] [--no-relaunch] [--dry-run] [--status]
 
 选项:
   -h, --help           显示帮助信息并退出
   -v, --version        显示版本号
+  --lang {auto,zh,en}  显示语言: 'auto' (自动跟随系统), 'zh' (中文), 或 'en' (英文)
   --buffer BUFFER      达到 resets_at 后的额外网络缓冲秒数 (默认: 30 秒)
-  --prompt PROMPT      续跑会话时传递给 Codex 的提示词 (默认: '配额已恢复，请继续完成刚才被中断的任务。')
+  --prompt PROMPT      续跑会话时传递给 Codex 的提示词 (默认自适应中英文系统)
   --no-relaunch        任务执行完毕后不自动重新打开桌面客户端
   --dry-run            模拟模式，仅打印倒计时，不终止进程也不调用 CLI
   --status             检查当前限额状态一次后立即退出

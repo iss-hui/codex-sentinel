@@ -76,15 +76,16 @@ codex-sentinel --status
 ### Command Line Options
 
 ```text
-usage: codex-sentinel [-h] [-v] [--buffer BUFFER] [--prompt PROMPT] [--no-relaunch] [--dry-run] [--status]
+usage: codex-sentinel [-h] [-v] [--lang {auto,zh,en}] [--buffer BUFFER] [--prompt PROMPT] [--no-relaunch] [--dry-run] [--status]
 
 Codex Sentinel: Intelligent unattended auto-resumer & writer-lock manager for OpenAI Codex.
 
 options:
   -h, --help           Show this help message and exit
   -v, --version        Show program's version number and exit
+  --lang {auto,zh,en}  Display language: 'auto' (detect system language), 'zh' (Chinese), or 'en' (English)
   --buffer BUFFER      Buffer wait seconds after resets_at before resuming CLI (default: 30)
-  --prompt PROMPT      Custom prompt string for resuming session (default: '配额已恢复，请继续完成刚才被中断的任务。')
+  --prompt PROMPT      Custom prompt string for resuming session (defaults to localized system prompt)
   --no-relaunch        Do not automatically relaunch Desktop App after session finishes
   --dry-run            Simulate execution without terminating processes or calling CLI
   --status             Check and display rate limit status once and exit
