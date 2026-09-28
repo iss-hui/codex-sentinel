@@ -56,8 +56,8 @@ flowchart TD
 ## 🚀 快速上手
 
 ### 环境要求
-- Python >= 3.8
-- 已安装官方 Codex CLI (`codex`)
+- **Python >= 3.8**（若直接从 Release 下载免安装的 `.exe` / 单文件版，则**无需安装 Python**）
+- **已安装官方 OpenAI Codex**（桌面客户端安装包已内置 `codex` CLI，Sentinel 亦支持自动探测定位）
 
 ### 安装方式
 

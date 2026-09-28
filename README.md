@@ -46,6 +46,10 @@ flowchart TD
 
 ## 🚀 Quick Start
 
+### Prerequisites
+- **Python >= 3.8** (Not required if using standalone `.exe` or pre-built binaries from Releases)
+- **Official OpenAI Codex** (Desktop App automatically bundles the `codex` CLI; Sentinel auto-detects its location)
+
 ### Installation
 
 ```bash
