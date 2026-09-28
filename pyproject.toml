@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "codex-sentinel"
 version = "0.1.0"
-description = "Intelligent unattended auto-resumer and session lock manager for OpenAI Codex Desktop & CLI"
+description = "Auto-resume OpenAI Codex after 5-hour rate limits: unattended zero-polling daemon & lock manager"
 readme = "README.md"
 requires-python = ">=3.8"
 license = "MIT"

@@ -1,4 +1,4 @@
-# Codex Sentinel 🛡️
+# Codex Sentinel 🛡️ - Never Get Blocked by OpenAI Codex's 5-Hour Rate Limit Again
 
 [![CI](https://github.com/isshui/codex-sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/isshui/codex-sentinel/actions/workflows/ci.yml)
 [![Release](https://github.com/isshui/codex-sentinel/actions/workflows/release.yml/badge.svg)](https://github.com/isshui/codex-sentinel/actions/workflows/release.yml)
@@ -6,11 +6,10 @@
 [![Python: >=3.8](https://img.shields.io/badge/python-3.8+-brightgreen.svg)](https://www.python.org/)
 [![OS: Windows | Linux | macOS](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#cross-platform-compatibility)
 
-[中文文档 (README_zh.md)](README_zh.md)
+[中文说明文档 (README_zh.md)](README_zh.md)
 
-**Codex Sentinel** is an intelligent, unattended resilience daemon and session lock manager for OpenAI Codex Desktop & CLI.
-
-It monitors your local Codex sessions, automatically calculates exact quota cooldowns, resolves thread-store writer lock conflicts (`code -32600`), and resumes interrupted sessions via the official `codex exec resume` CLI as soon as quota resets—allowing overnight, unattended long-running workflows without human intervention.
+> **Tired of waking up to "Usage limit reached" during overnight coding tasks?**  
+> Codex Sentinel is an intelligent, unattended daemon that automatically monitors OpenAI Codex's 5-hour rolling limits, resolves desktop writer-lock deadlocks (`code -32600`), and auto-resumes your interrupted sessions the exact second quota resets—enabling true overnight, hands-free development!
 
 ---
 

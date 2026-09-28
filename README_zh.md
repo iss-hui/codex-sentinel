@@ -1,4 +1,4 @@
-# Codex Sentinel 🛡️ (哨兵守护进程)
+# Codex Sentinel 🛡️ - 告别 5 小时限额中断！OpenAI Codex 无人值守自动续跑神器
 
 [![CI](https://github.com/isshui/codex-sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/isshui/codex-sentinel/actions/workflows/ci.yml)
 [![Release](https://github.com/isshui/codex-sentinel/actions/workflows/release.yml/badge.svg)](https://github.com/isshui/codex-sentinel/actions/workflows/release.yml)
@@ -7,9 +7,8 @@
 
 [English Documentation (README.md)](README.md)
 
-**Codex Sentinel** 是专为 OpenAI Codex 桌面客户端与 CLI 工具打造的**无人值守智能续跑守护进程与写入锁管理器**。
-
-它实时被动检测本地 Codex 会话状态，精准计算官方额度重置时间，彻底攻克多进程写入锁冲突（`code -32600: thread already has an active writer`），并在额度恢复时通过官方原生 `codex exec resume` 无缝接管并完成中断的长任务。
+> **痛点场景：你是否经历过深夜挂机让 Codex 跑长任务，第二天早晨醒来却发现第 10 分钟就被 5 小时限额中断？手动 Resume 还被写入锁死锁报错 `-32600`？**  
+> **Codex Sentinel** 专为解决此痛点而生：**零网络轮询、本地被动监控、安全解除桌面进程锁、配额恢复瞬间全自动唤醒继续执行**，真正实现无人值守通宵挂机！
 
 ---
 
