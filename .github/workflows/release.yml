@@ -9,8 +9,8 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
-    name: Build Distribution and Create GitHub Release
+  build-pypi:
+    name: Build Python Wheels & Sdist
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,13 +25,128 @@ jobs:
           python -m pip install --upgrade pip
           pip install build
 
-      - name: Build package distributions (sdist & wheel)
+      - name: Build distributions
         run: python -m build
 
-      - name: Create GitHub Release
+      - name: Upload PyPI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pypi-dist
+          path: dist/*
+
+  build-windows-exe:
+    name: Build Windows Standalone EXE
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies & PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install . pyinstaller
+
+      - name: Compile Windows EXE
+        run: |
+          pyinstaller --clean --noconfirm --onefile --name codex-sentinel-windows-x64 --console run_sentinel.py
+
+      - name: Upload Windows EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: dist/codex-sentinel-windows-x64.exe
+
+  build-linux-binary:
+    name: Build Linux Standalone Binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies & PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install . pyinstaller
+
+      - name: Compile Linux Binary
+        run: |
+          pyinstaller --clean --noconfirm --onefile --name codex-sentinel-linux-x64 run_sentinel.py
+          chmod +x dist/codex-sentinel-linux-x64
+
+      - name: Upload Linux Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-bin
+          path: dist/codex-sentinel-linux-x64
+
+  build-macos-binary:
+    name: Build macOS Standalone Binary
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies & PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install . pyinstaller
+
+      - name: Compile macOS Binary
+        run: |
+          pyinstaller --clean --noconfirm --onefile --name codex-sentinel-macos run_sentinel.py
+          chmod +x dist/codex-sentinel-macos
+
+      - name: Upload macOS Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-bin
+          path: dist/codex-sentinel-macos
+
+  create-github-release:
+    name: Publish GitHub Release
+    needs: [build-pypi, build-windows-exe, build-linux-binary, build-macos-binary]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download PyPI artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: pypi-dist
+          path: release-assets
+
+      - name: Download Windows EXE
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-exe
+          path: release-assets
+
+      - name: Download Linux Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-bin
+          path: release-assets
+
+      - name: Download macOS Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-bin
+          path: release-assets
+
+      - name: Publish Release with All Assets
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: release-assets/*
           generate_release_notes: true
           draft: false
           prerelease: false

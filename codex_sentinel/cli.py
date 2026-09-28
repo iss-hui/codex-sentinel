@@ -8,6 +8,14 @@ import argparse
 import sys
 from datetime import datetime
 
+# Ensure utf-8 encoding for stdout/stderr across all platforms and Windows code pages
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 from codex_sentinel import __version__
 from codex_sentinel.core import run_daemon
 from codex_sentinel.detector import find_active_rate_limit
