@@ -14,18 +14,40 @@ from typing import List, Optional
 from codex_sentinel.i18n import t
 
 
+import re
+
+
+def _get_codex_version(path: Path) -> tuple[int, int, int]:
+    """Extract (major, minor, patch) version from codex executable."""
+    try:
+        out = subprocess.check_output(
+            [str(path), "--version"],
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=3,
+        )
+        match = re.search(r"(\d+)\.(\d+)\.(\d+)", out)
+        if match:
+            return tuple(map(int, match.groups()))
+    except Exception:
+        pass
+    return (0, 0, 0)
+
+
 def find_codex_binary() -> str:
     """
-    Search for the official `codex` executable.
-    1. First checks system PATH.
-    2. Fallback to official Codex Desktop App bundled locations.
+    Search for all candidate `codex` executables and select the HIGHEST available version.
+    This guarantees that older CLI versions in PATH do not reject newer models (such as gpt-6-astra).
     """
-    found = shutil.which("codex")
-    if found:
-        return found
-
     home = Path.home()
     candidate_paths: List[Path] = []
+
+    # 1. System PATH
+    found = shutil.which("codex")
+    if found:
+        candidate_paths.append(Path(found))
+
+    # 2. Platform-specific locations
     if sys.platform == "win32":
         candidate_paths.extend([
             home / "AppData" / "Local" / "Programs" / "OpenAI" / "Codex" / "bin" / "codex.exe",
@@ -33,10 +55,12 @@ def find_codex_binary() -> str:
         ])
         bin_dir = home / "AppData" / "Local" / "OpenAI" / "Codex" / "bin"
         if bin_dir.exists():
-            for sub in bin_dir.iterdir():
-                cand = sub / "codex.exe"
-                if cand.exists():
-                    candidate_paths.append(cand)
+            for p in bin_dir.glob("**/codex.exe"):
+                candidate_paths.append(p)
+        standalone_dir = home / ".codex" / "packages" / "standalone"
+        if standalone_dir.exists():
+            for p in standalone_dir.glob("**/codex.exe"):
+                candidate_paths.append(p)
     else:
         candidate_paths.extend([
             home / ".codex" / "packages" / "standalone" / "current" / "bin" / "codex",
@@ -45,11 +69,14 @@ def find_codex_binary() -> str:
             home / ".local" / "bin" / "codex",
         ])
 
-    for cand in candidate_paths:
-        if cand.exists():
-            return str(cand)
+    # Deduplicate existing candidates
+    valid_candidates = [p for p in set(candidate_paths) if p.exists()]
+    if not valid_candidates:
+        return "codex"
 
-    return "codex"
+    # Sort by version descending (highest version first)
+    valid_candidates.sort(key=_get_codex_version, reverse=True)
+    return str(valid_candidates[0])
 
 
 def resume_session_task(
