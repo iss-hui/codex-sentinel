@@ -1,0 +1,117 @@
+# Codex Sentinel 🛡️
+
+[![CI](https://github.com/isshui/codex-sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/isshui/codex-sentinel/actions/workflows/ci.yml)
+[![Release](https://github.com/isshui/codex-sentinel/actions/workflows/release.yml/badge.svg)](https://github.com/isshui/codex-sentinel/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Python: >=3.8](https://img.shields.io/badge/python-3.8+-brightgreen.svg)](https://www.python.org/)
+[![OS: Windows | Linux | macOS](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)](#cross-platform-compatibility)
+
+[中文文档 (README_zh.md)](README_zh.md)
+
+**Codex Sentinel** is an intelligent, unattended resilience daemon and session lock manager for OpenAI Codex Desktop & CLI.
+
+It monitors your local Codex sessions, automatically calculates exact quota cooldowns, resolves thread-store writer lock conflicts (`code -32600`), and resumes interrupted sessions via the official `codex exec resume` CLI as soon as quota resets—allowing overnight, unattended long-running workflows without human intervention.
+
+---
+
+## 🎯 Key Problems Solved
+
+When running long development sessions or batch tasks with OpenAI Codex:
+1. **5-Hour Rolling Limit Interruption**: When you hit the rolling rate limit, Codex stops immediately. Developers often have to manually check hours later to resume.
+2. **`thread already has an active writer (code -32600)` Conflict**:
+   - In Codex Desktop (Electron app), the parent process (`ChatGPT.exe`) acts as a supervisor.
+   - If you attempt to resume the interrupted session from CLI while the Desktop app is open, Codex's Rust storage engine refuses access because the thread lock is exclusively held.
+   - Simply terminating the child worker (`codex.exe`) triggers Electron's auto-restart loop, causing the lock to be re-acquired within milliseconds.
+3. **Zero Polling & 100% ToS Compliance**:
+   - Sentinel **never** sends polling requests to OpenAI APIs.
+   - It passively inspects local session rollout logs (`~/.codex/sessions/**/*.jsonl`) to read the official `resets_at` timestamp.
+   - Resumption is handed over to the official `codex exec resume` CLI.
+
+---
+
+## 🏗️ Architecture
+
+```mermaid
+flowchart TD
+    A["Local Codex Session Logs<br/>(~/.codex/sessions)"] -->|"Passive Inspection (Zero-Polling)"| B["Codex Sentinel Daemon"]
+    B -->|"Extract resets_at & session_id"| C{"Rate Limit Active?"}
+    C -->|"No"| D["Idle Monitoring (5s poll)"]
+    C -->|"Yes"| E["Accurate Countdown Timer"]
+    E -->|"Cooldown Reached + Buffer"| F["Session Lock Manager"]
+    F -->|"Clean Desktop Process Tree<br/>(Kill Electron + Worker)"| G["Verify Lock Release<br/>(msvcrt / fcntl)"]
+    G -->|"Single-Writer Lock Free"| H["Official Codex CLI<br/>(codex exec resume)"]
+    H -->|"Task Completed"| I["Auto Relaunch Desktop App<br/>(Optional)"]
+```
+
+---
+
+## 🚀 Quick Start
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/isshui/codex-sentinel.git
+cd codex-sentinel
+
+# Install in editable mode
+pip install -e .
+```
+
+### Basic Usage
+
+Start the sentinel daemon:
+```bash
+codex-sentinel
+```
+
+Check current rate limit status once:
+```bash
+codex-sentinel --status
+```
+
+### Command Line Options
+
+```text
+usage: codex-sentinel [-h] [-v] [--buffer BUFFER] [--prompt PROMPT] [--no-relaunch] [--dry-run] [--status]
+
+Codex Sentinel: Intelligent unattended auto-resumer & writer-lock manager for OpenAI Codex.
+
+options:
+  -h, --help           Show this help message and exit
+  -v, --version        Show program's version number and exit
+  --buffer BUFFER      Buffer wait seconds after resets_at before resuming CLI (default: 30)
+  --prompt PROMPT      Custom prompt string for resuming session (default: '配额已恢复，请继续完成刚才被中断的任务。')
+  --no-relaunch        Do not automatically relaunch Desktop App after session finishes
+  --dry-run            Simulate execution without terminating processes or calling CLI
+  --status             Check and display rate limit status once and exit
+```
+
+---
+
+## 💻 Cross-Platform Compatibility
+
+| Feature | Windows | Linux | macOS |
+| :--- | :--- | :--- | :--- |
+| **Log Path** | `%USERPROFILE%\.codex\sessions` | `~/.codex/sessions` | `~/.codex/sessions` |
+| **Lock Checking** | `msvcrt.locking` | `fcntl.flock` | `fcntl.flock` |
+| **Process Tree Termination** | `taskkill /F /T` + `psutil` | `pkill` / `SIGTERM` / `SIGKILL` | `pkill` / `SIGTERM` |
+| **Desktop App Relaunch** | Shell UWP URI scheme | `gtk-launch` / binary | `open -a ChatGPT` |
+| **Sound Alert** | `winsound.Beep` | Terminal Bell `\a` | Terminal Bell `\a` |
+
+---
+
+## 🔒 Safety & Compliance
+
+- **No API Reverse-Engineering**: All session metadata is read from official local `.jsonl` files stored on your disk.
+- **Zero API Quota Wasted**: The daemon sleeps until the official `resets_at` timestamp. No pinging OpenAI servers.
+- **No Data Leakage**: Sentinel runs entirely locally on your machine. No telemetry or external network calls.
+- **Data Integrity**: Does not modify `.codex` SQLite databases or session transcripts; only triggers the official CLI.
+
+---
+
+## 🤝 Contributing & License
+
+Contributions are welcome! Please feel free to submit a Pull Request or open an Issue.
+
+Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for details.
