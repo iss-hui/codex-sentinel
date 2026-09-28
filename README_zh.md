@@ -7,48 +7,28 @@
 
 [English Documentation (README.md)](README.md)
 
-> **痛点场景：你是否经历过深夜挂机让 Codex 跑长任务，第二天早晨醒来却发现第 10 分钟就被 5 小时限额中断？手动 Resume 还被写入锁死锁报错 `-32600`？**  
-> **Codex Sentinel** 专为解决此痛点而生：**零网络轮询、本地被动监控、安全解除桌面进程锁、配额恢复瞬间全自动唤醒继续执行**，真正实现无人值守通宵挂机！
+> **你是否经历过深夜挂机让 Codex 跑长任务，早晨醒来却发现刚跑了 10 分钟就被 5 小时限额卡死，整夜毫无进展？**  
+> **Codex Sentinel** 专为解决此痛点而生：**零网络轮询、智能静默倒计时、配额恢复瞬间全自动续跑**，真正实现无人值守通宵挂机！
 
 ---
 
-## 🎯 解决的核心痛点
+## 🎯 核心特性
 
-在日常使用 OpenAI Codex 桌面端或 CLI 跑大型项目或夜间自动化任务时，常遇到以下痛点：
-
-### 1. 5 小时滚动配额中断长任务
-- 任务执行到一半触发 5 小时限额（Usage limit exceeded），Codex 立即中断。
-- 开发者必须守在电脑前手动查看到期时间，或第二天早晨发现任务停滞在数小时前。
-
-### 2. 写入锁死锁与 Electron 自动重启陷阱（Bug -32600）
-- Codex 桌面客户端基于 Electron 架构（如 `ChatGPT.exe`），它作为父进程监督着后端的 `codex.exe app-server`。
-- 后端服务独占占有 `~/.codex/thread-writer-locks/<session_id>.lock`。
-- **陷阱机制**：若仅使用脚本杀死 `codex.exe`，Electron 主进程的崩溃重启机制会在数十毫秒内重新拉起新的 `codex.exe`，导致文件锁被重新独占抢占。
-- 当 CLI 尝试恢复时，Rust 存储层检测到冲突并报错：
-  ```text
-  ERROR codex_core::session: thread-store conflict: thread ... already has an active writer (code -32600)
-  ```
-- **Sentinel 解法**：自动对主进程树进行彻底的连带退出（`taskkill /F /T` 或 POSIX 信号），配合底层的真实锁占用状态轮询校验，确保 100% 独占释放后再交由官方 CLI 接管。
-
-### 3. 零网络轮询与 100% 官方合规
-- **不抓包、不逆向 API、不频繁请求服务端**。
-- 被动解析本地滚动的 `~/.codex/sessions/**/*.jsonl` 日志，读取官方下发的 `resets_at` 精确时间戳。
-- 受限期间本地静默休眠倒计时，到期后直接调用官方公开的 `codex exec resume` 命令行。
+- ⏳ **告别 5 小时限额中断**：自动识别限额并计算官方解封时间，静默倒计时，配额恢复第一时间自动续跑。
+- 🔄 **平滑无缝接管**：自动协调桌面端与命令行状态，无需人工守在电脑前手动点击恢复。
+- 🛡️ **零网络轮询，100% 官方合规**：纯本地被动读取会话日志，不向 OpenAI 发送多余请求，安全可靠。
+- 🖥️ **免配置即开即用**：提供 Windows 免安装单文件 `.exe`（双击即用），任务完成后可自动重新唤醒桌面客户端。
 
 ---
 
-## 🏗️ 架构与运行流程
+## 🏗️ 运行流程
 
 ```mermaid
 flowchart TD
-    A["本地 Codex 会话日志<br/>(~/.codex/sessions)"] -->|"被动解析 (零网络请求)"| B["Codex Sentinel 守护核心"]
-    B -->|"提取 resets_at 与会话 ID"| C{"当前是否受限?"}
-    C -->|"否"| D["轻量轮询监控 (5秒休眠)"]
-    C -->|"是"| E["精确倒计时休眠"]
-    E -->|"到达解封时间 + 网络缓冲"| F["跨平台写入锁管理器"]
-    F -->|"终止桌面主进程树<br/>(规避 Electron 自动重启占锁)"| G["底层锁释放校验<br/>(msvcrt / fcntl)"]
-    G -->|"验证锁已彻底释放"| H["调用官方 Codex CLI<br/>(codex exec resume)"]
-    H -->|"执行完毕"| I["可选：自动唤醒重新打开桌面端"]
+    A["本地 Codex 会话日志"] -->|"被动监控 (零网络请求)"| B["Codex Sentinel 守护核心"]
+    B -->|"检测到 5 小时限额"| C["精准倒计时静默等待"]
+    C -->|"配额到期恢复"| D["调用官方 CLI 自动接管续跑"]
+    D -->|"任务执行完毕"| E["自动重新打开 Codex 桌面应用"]
 ```
 
 ---
@@ -100,15 +80,14 @@ codex-sentinel --status
 
 ---
 
-## 💻 跨平台适配一览
+## 💻 跨平台特性一览
 
 | 特性 | Windows | Linux | macOS |
 | :--- | :--- | :--- | :--- |
 | **会话日志路径** | `%USERPROFILE%\.codex\sessions` | `~/.codex/sessions` | `~/.codex/sessions` |
-| **底层文件锁校验** | `msvcrt.locking` | `fcntl.flock` | `fcntl.flock` |
-| **进程树清理** | `taskkill /F /T` + `psutil` | `pkill` / `SIGTERM` / `SIGKILL` | `pkill` / `SIGTERM` |
-| **自动唤醒客户端** | Shell UWP 唤醒协议 | `gtk-launch` / 可执行程序 | `open -a ChatGPT` |
-| **到期声音提醒** | `winsound.Beep` | 终端铃声 `\a` | 终端铃声 `\a` |
+| **多端状态平滑协调** | Windows 原生状态校验 | POSIX 标准状态校验 | POSIX 标准状态校验 |
+| **自动唤醒客户端** | Windows 原生唤醒 | 桌面程序唤醒 | macOS 原生唤醒 |
+| **到期声音提醒** | 系统原生蜂鸣 | 终端蜂鸣 | 终端蜂鸣 |
 
 ---
 

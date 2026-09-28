@@ -9,37 +9,27 @@
 [中文说明文档 (README_zh.md)](README_zh.md)
 
 > **Tired of waking up to "Usage limit reached" during overnight coding tasks?**  
-> Codex Sentinel is an intelligent, unattended daemon that automatically monitors OpenAI Codex's 5-hour rolling limits, resolves desktop writer-lock deadlocks (`code -32600`), and auto-resumes your interrupted sessions the exact second quota resets—enabling true overnight, hands-free development!
+> **Codex Sentinel** is a lightweight, unattended daemon that automatically monitors OpenAI Codex's 5-hour rolling limits, tracks exact cooldowns, and auto-resumes your interrupted sessions the exact second quota resets—enabling true overnight, hands-free development!
 
 ---
 
-## 🎯 Key Problems Solved
+## 🎯 Key Features
 
-When running long development sessions or batch tasks with OpenAI Codex:
-1. **5-Hour Rolling Limit Interruption**: When you hit the rolling rate limit, Codex stops immediately. Developers often have to manually check hours later to resume.
-2. **`thread already has an active writer (code -32600)` Conflict**:
-   - In Codex Desktop (Electron app), the parent process (`ChatGPT.exe`) acts as a supervisor.
-   - If you attempt to resume the interrupted session from CLI while the Desktop app is open, Codex's Rust storage engine refuses access because the thread lock is exclusively held.
-   - Simply terminating the child worker (`codex.exe`) triggers Electron's auto-restart loop, causing the lock to be re-acquired within milliseconds.
-3. **Zero Polling & 100% ToS Compliance**:
-   - Sentinel **never** sends polling requests to OpenAI APIs.
-   - It passively inspects local session rollout logs (`~/.codex/sessions/**/*.jsonl`) to read the official `resets_at` timestamp.
-   - Resumption is handed over to the official `codex exec resume` CLI.
+- ⏳ **No More 5-Hour Limit Interruptions**: Automatically captures rate-limit cooldowns, tracks exact reset timestamps, and auto-resumes execution upon quota recovery.
+- 🔄 **Seamless Hands-Free Handover**: Smoothly handles session continuity between Desktop and CLI without requiring human intervention.
+- 🛡️ **Zero Network Polling & 100% ToS Compliant**: Passively monitors local session logs. Never pings OpenAI servers; safe and risk-free.
+- 💻 **Standalone & Ready-to-Use**: Standalone Windows `.exe` (no Python needed) plus `pip install codex-sentinel`. Automatically re-opens Desktop App when finished.
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Workflow
 
 ```mermaid
 flowchart TD
-    A["Local Codex Session Logs<br/>(~/.codex/sessions)"] -->|"Passive Inspection (Zero-Polling)"| B["Codex Sentinel Daemon"]
-    B -->|"Extract resets_at & session_id"| C{"Rate Limit Active?"}
-    C -->|"No"| D["Idle Monitoring (5s poll)"]
-    C -->|"Yes"| E["Accurate Countdown Timer"]
-    E -->|"Cooldown Reached + Buffer"| F["Session Lock Manager"]
-    F -->|"Clean Desktop Process Tree<br/>(Kill Electron + Worker)"| G["Verify Lock Release<br/>(msvcrt / fcntl)"]
-    G -->|"Single-Writer Lock Free"| H["Official Codex CLI<br/>(codex exec resume)"]
-    H -->|"Task Completed"| I["Auto Relaunch Desktop App<br/>(Optional)"]
+    A["Local Codex Session Logs"] -->|"Passive Monitoring (Zero-Polling)"| B["Codex Sentinel Daemon"]
+    B -->|"5-Hour Limit Detected"| C["Silent Accurate Countdown"]
+    C -->|"Quota Restored"| D["Official Codex CLI Auto-Resumption"]
+    D -->|"Task Completed"| E["Auto Relaunch Desktop App"]
 ```
 
 ---
@@ -93,15 +83,14 @@ options:
 
 ---
 
-## 💻 Cross-Platform Compatibility
+## 💻 Cross-Platform Support
 
 | Feature | Windows | Linux | macOS |
 | :--- | :--- | :--- | :--- |
-| **Log Path** | `%USERPROFILE%\.codex\sessions` | `~/.codex/sessions` | `~/.codex/sessions` |
-| **Lock Checking** | `msvcrt.locking` | `fcntl.flock` | `fcntl.flock` |
-| **Process Tree Termination** | `taskkill /F /T` + `psutil` | `pkill` / `SIGTERM` / `SIGKILL` | `pkill` / `SIGTERM` |
-| **Desktop App Relaunch** | Shell UWP URI scheme | `gtk-launch` / binary | `open -a ChatGPT` |
-| **Sound Alert** | `winsound.Beep` | Terminal Bell `\a` | Terminal Bell `\a` |
+| **Session Log Path** | `%USERPROFILE%\.codex\sessions` | `~/.codex/sessions` | `~/.codex/sessions` |
+| **Session State Handover** | Native Windows state checks | POSIX standard checks | POSIX standard checks |
+| **Desktop App Relaunch** | Native Windows app protocol | System launcher | Native macOS app launch |
+| **Sound Alert** | System beep | Terminal bell | Terminal bell |
 
 ---
 
