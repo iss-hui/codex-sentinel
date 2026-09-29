@@ -33,6 +33,14 @@ flowchart TD
 
 ---
 
+## 📸 运行效果截图
+
+| 正常巡航监控（未受限） | 自动识别 5 小时限额并精准倒计时 |
+| :---: | :---: |
+| ![正常巡航监控](docs/assets/normal_monitoring.png) | ![限额精准倒计时](docs/assets/rate_limit_countdown.png) |
+
+---
+
 ## 🚀 快速上手
 
 ### 环境要求

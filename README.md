@@ -34,6 +34,14 @@ flowchart TD
 
 ---
 
+## 📸 Screenshots
+
+| Active Cruise Monitoring (Uncapped) | Rate-Limit Detected & Accurate Countdown |
+| :---: | :---: |
+| ![Active Cruise Monitoring](docs/assets/normal_monitoring.png) | ![Rate-Limit Accurate Countdown](docs/assets/rate_limit_countdown.png) |
+
+---
+
 ## 🚀 Quick Start
 
 ### Prerequisites
