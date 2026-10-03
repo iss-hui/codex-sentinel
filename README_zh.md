@@ -1,118 +1,93 @@
-# Codex Sentinel 🛡️ - 告别 5 小时限额中断！OpenAI Codex 无人值守自动续跑神器
+# Codex Sentinel 2.0
 
-[![CI](https://github.com/isshui/codex-sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/isshui/codex-sentinel/actions/workflows/ci.yml)
-[![Release](https://github.com/isshui/codex-sentinel/actions/workflows/release.yml/badge.svg)](https://github.com/isshui/codex-sentinel/actions/workflows/release.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python: >=3.8](https://img.shields.io/badge/python-3.8+-brightgreen.svg)](https://www.python.org/)
+本地优先的 Codex 桌面限额看板、窗口启动预约和对话恢复工具。
 
-[English Documentation (README.md)](README.md)
+[English](README.md) · [实现记录与后续优化](docs/desktop-completion.md)
 
-> **你是否经历过深夜挂机让 Codex 跑长任务，早晨醒来却发现刚跑了 10 分钟就被 5 小时限额卡死，整夜毫无进展？**  
-> **Codex Sentinel** 专为解决此痛点而生：**零网络轮询、智能静默倒计时、配额恢复瞬间全自动续跑**，真正实现无人值守通宵挂机！
+![桌面总览（示例数据）](docs/assets/desktop_dashboard.png)
 
----
+## 启动
 
-## 🎯 核心特性
+Windows 桌面包：解压 `CodexSentinel-windows-x64.zip`，双击文件夹中的 `CodexSentinel.exe`。请保留旁边的 `_internal` 目录。需要已安装并登录的官方 Codex CLI；Sentinel 会自动查找，也可在设置中指定路径。
 
-- ⏳ **告别 5 小时限额中断**：自动识别限额并计算官方解封时间，静默倒计时，配额恢复第一时间自动续跑。
-- 🔄 **平滑无缝接管**：自动协调桌面端与命令行状态，无需人工守在电脑前手动点击恢复。
-- 🛡️ **零网络轮询，100% 官方合规**：纯本地被动读取会话日志，不向 OpenAI 发送多余请求，安全可靠。
-- 🖥️ **免配置即开即用**：提供 Windows 免安装单文件 `.exe`（双击即用），任务完成后可自动重新唤醒桌面客户端。
+源码运行（Python 3.10+）：
 
----
-
-## 🏗️ 运行流程
-
-```mermaid
-flowchart TD
-    A["本地 Codex 会话日志"] -->|"被动监控 (零网络请求)"| B["Codex Sentinel 守护核心"]
-    B -->|"检测到 5 小时限额"| C["精准倒计时静默等待"]
-    C -->|"配额到期恢复"| D["调用官方 CLI 自动接管续跑"]
-    D -->|"任务执行完毕"| E["自动重新打开 Codex 桌面应用"]
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e '.[dev]'
+.\.venv\Scripts\python.exe run_desktop.py
 ```
 
----
-
-## 📸 运行效果截图
-
-| 正常巡航监控（未受限） | 自动识别 5 小时限额并精准倒计时 |
-| :---: | :---: |
-| ![正常巡航监控](docs/assets/normal_monitoring.png) | ![限额精准倒计时](docs/assets/rate_limit_countdown.png) |
-
----
-
-## 🚀 快速上手
-
-### 环境要求
-- **Python >= 3.8**（若直接从 Release 下载免安装的 `.exe` / 单文件版，则**无需安装 Python**）
-- **已安装官方 OpenAI Codex**（桌面客户端安装包已内置 `codex` CLI，Sentinel 亦支持自动探测定位）
-
-### 安装方式
-
-```bash
-# 克隆仓库
-git clone https://github.com/isshui/codex-sentinel.git
-cd codex-sentinel
-
-# 可编辑模式安装
-pip install -e .
-```
-
-### 基础运行
-
-直接启动守护进程：
-```bash
-codex-sentinel
-```
-
-仅查询当前会话限额状态并退出：
-```bash
-codex-sentinel --status
-```
-
-### 命令行参数详解
+安装后的命令：
 
 ```text
-用法: codex-sentinel [-h] [-v] [--lang {auto,zh,en}] [--buffer BUFFER] [--prompt PROMPT] [--no-relaunch] [--dry-run] [--status]
-
-选项:
-  -h, --help           显示帮助信息并退出
-  -v, --version        显示版本号
-  --lang {auto,zh,en}  显示语言: 'auto' (自动跟随系统), 'zh' (中文), 或 'en' (英文)
-  --buffer BUFFER      达到 resets_at 后的额外网络缓冲秒数 (默认: 30 秒)
-  --prompt PROMPT      续跑会话时传递给 Codex 的提示词 (默认自适应中英文系统)
-  --no-relaunch        任务执行完毕后不自动重新打开桌面客户端
-  --dry-run            模拟模式，仅打印倒计时，不终止进程也不调用 CLI
-  --status             检查当前限额状态一次后立即退出
+codex-sentinel                  桌面界面（默认）
+codex-sentinel-gui              无控制台桌面入口
+codex-sentinel --gui --lang zh  中文界面
+codex-sentinel --gui --dry-run  模拟执行，不发送消息
+codex-sentinel --daemon        原有命令行守护模式
+codex-sentinel --status        原有单次限额检查
 ```
 
----
+`--buffer 30` / `--buffer 60` 指定缓冲，`--prompt` 指定恢复语句。GUI 启动失败会报错退出，不会自动切换成会发送消息的守护模式。`--no-relaunch` 仅用于原有守护模式；新 GUI 不会关闭官方桌面程序。
 
-## 💻 跨平台特性一览
+## 使用
 
-| 特性 | Windows | Linux | macOS |
-| :--- | :--- | :--- | :--- |
-| **会话日志路径** | `%USERPROFILE%\.codex\sessions` | `~/.codex/sessions` | `~/.codex/sessions` |
-| **多端状态平滑协调** | Windows 原生状态校验 | POSIX 标准状态校验 | POSIX 标准状态校验 |
-| **自动唤醒客户端** | Windows 原生唤醒 | 桌面程序唤醒 | macOS 原生唤醒 |
-| **到期声音提醒** | 系统原生蜂鸣 | 终端蜂鸣 | 终端蜂鸣 |
+### 总览
 
----
+- 显示本地记录的限额分组、五小时主窗口、周/次窗口、已用比例、重置日期时间、记录时间和套餐。
+- 缺失数据显示未知；重置时间过去后标记记录过期，不会凭空将用量清零。
+- 首次运行默认不勾选自动恢复。勾选后，扫描范围内因限额中断且有明确重置时间的对话会加入恢复队列。取消勾选会暂停未开始的自动恢复项。
+- 恢复语句、文件修改权限和缓冲需要点击“保存恢复设置”。更改会应用到尚未执行的自动恢复项；普通预约保存自己的缓冲值。
+- 对话选择显示“文件夹 › Codex 侧栏标题”，优先读取本地保存的名称；悬停可查看完整路径、模型和对话 ID。预约页面使用同样的显示方式。
+- 默认只读执行。如需继续修改代码，请勾选“允许恢复任务修改工作目录中的文件”。
+- “加入恢复队列”针对当前选择的对话。它也会遵守已知限额和缓冲，不会强行绕过等待。
 
-## 🧪 测试与开发
+### 窗口启动与预约
 
-本项目包含完整的单元测试（覆盖会话解析、限额提取、文件锁状态测试）：
+1. 选择轻量启动消息或实际任务，选择模型、已有/新建对话、工作目录和语句。模型来自本地缓存；留空使用 Codex 默认，也可输入模型 ID。
+2. 选择尽快执行、完整日期时间，或本地记录中的下一个五小时重置点。
+3. 若希望正式工作时窗口大约剩三小时或两小时，可以设置“计划开始使用时间”，再点“提前2小时发送”或“提前3小时发送”。
+4. 保存到队列。最早执行时间为 `max(预约时间, 已知耗尽窗口重置时间) + 缓冲`，默认缓冲 30 秒，可选 60 秒或自定义；到时仍被占用的会话还需完成桌面交接并等待锁释放。
 
-```bash
-# 安装开发依赖
-pip install .[dev]
+发送消息只是尝试让账号产生一次使用。**五小时窗口由服务器决定，Sentinel 不能保证一条消息开启新窗口，也不能提前重置或跳过限额。** 多条任务可以预约到下一个已知重置点。若周额度也耗尽，会继续等到周窗口恢复。
 
-# 运行单元测试
-pytest -v tests/
+### 执行队列
+
+- 支持添加、编辑、排序、取消、重新排期、暂停自动执行及停止当前执行；每次只运行一个任务。
+- 可查看提示词、工作目录、结果原因和 CLI 日志。
+- 已完成、失败或中断的任务不会自动重发；需要手动重新排期。失败可能已经产生部分工作，请先查看日志。
+- 对话被 Codex 桌面占用时，默认关闭识别出的桌面进程树（会中断其中正在执行的任务），确认锁释放后执行；任务结束后清理本次 CLI 及子进程，再重新打开桌面。可在“设置”关闭接管选项，恢复为等待占用释放。
+- 实时识别本轮完成事件。完成后最多等待 CLI 正常退出 2 秒，再清理残留进程并验证锁释放；完成、失败、取消与超时都进行清理。Windows 使用 Job Object 管理本次启动的进程组。清理失败会暂停队列并显示原因，避免继续启动任务。
+- “暂停自动执行”保留当前正在运行的任务；要中止它请点“停止当前执行”。
+
+### 后台与休眠
+
+关闭窗口默认进入系统托盘，托盘可重新打开、暂停或退出。无托盘的平台会正常退出。退出时停止当前 CLI 子进程并保存中断状态。
+
+应用必须保持运行，电脑必须处于唤醒状态。错过时间默认有 5 分钟宽限；超出后会标为“已错过”，需要手动重新排期，不会在下次启动时突然补发。支持跨日期预约和重启恢复队列；运行中崩溃的任务标为中断。
+
+## 数据与网络
+
+- 仅读取 `CODEX_HOME`（默认 `~/.codex`）中的 `sessions/**/*.jsonl`、`state_5.sqlite`、`.codex-global-state.json`（项目归属与排序）和 `models_cache.json`。SQLite 使用只读连接，字段兼容检测。限额与轮次状态增量扫描最近 100 个日志；对话列表读取完整的本地未归档交互会话索引，不受这 100 个文件限制。
+- 对话选择按 Codex 显示标题和项目分组，排除 Guardian review、子代理等内部日志。项目内按用户活动时间排列，兼容保存的手动顺序。未扫描到日志的旧对话状态保持“未知”。执行详情同时显示目标标题、目标会话 ID 和日志中的实际启动 ID，便于区分恢复目标与工具输出中提及的其他对话。
+- 监控默认每 5 秒扫描本地文件，增量读取新增日志；不调用官方限额查询接口，不读取或展示认证凭据。
+- 仅执行预约或恢复时调用官方 `codex exec` / `codex exec resume`。该 CLI 自身可能执行其正常的认证、模型和网络请求。
+- 本地记录可能滞后，切换账号或模型后尤其如此。没有可靠的模型限额映射时，调度会保守等待所有已知耗尽窗口。
+- 设置、队列和日志保存到 `~/.codex-sentinel`，可通过 `CODEX_SENTINEL_HOME` 指定独立目录。不会写入 Codex 数据库。
+- 启动消息超时 120 秒；实际任务超时 1 小时。超时、失败都保留日志供手动判断。
+
+## 开发与打包
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe scripts/render_gui.py
+.\.venv\Scripts\python.exe -m pip install pyinstaller
+.\.venv\Scripts\python.exe scripts/build_windows.py
 ```
 
----
+图形测试使用 Qt offscreen 和隔离数据，不调用真实模型。`scripts/render_gui.py` 使用示例数据生成五个页面截图。Windows 包输出为 `dist/desktop/CodexSentinel/`，压缩包为 `dist/CodexSentinel-windows-x64.zip`。
 
-## 📄 开源许可
+原有 `--daemon` 仍为旧实现。新增预约、日志去重、可配置的桌面交接与执行进程组清理由 GUI 提供。建议使用桌面模式。
 
-本项目采用 **MIT License**。详见 [LICENSE](LICENSE) 文件。
+MIT License，详见 [LICENSE](LICENSE)。

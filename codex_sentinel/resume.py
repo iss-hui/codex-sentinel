@@ -7,6 +7,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
+from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional
 
@@ -25,6 +26,7 @@ def _get_codex_version(path: Path) -> tuple[int, int, int]:
             stderr=subprocess.STDOUT,
             text=True,
             timeout=3,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
         )
         match = re.search(r"(\d+)\.(\d+)\.(\d+)", out)
         if match:
@@ -34,6 +36,7 @@ def _get_codex_version(path: Path) -> tuple[int, int, int]:
     return (0, 0, 0)
 
 
+@lru_cache(maxsize=1)
 def find_codex_binary() -> str:
     """
     Search for all candidate `codex` executables and select the HIGHEST available version.

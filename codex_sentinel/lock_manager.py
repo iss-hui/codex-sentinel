@@ -14,7 +14,9 @@ from typing import Optional
 
 def get_locks_dir() -> Path:
     """Return the platform-agnostic lock directory: ~/.codex/thread-writer-locks"""
-    return Path.home() / ".codex" / "thread-writer-locks"
+    from codex_sentinel.session_scanner import get_codex_dir
+
+    return get_codex_dir() / "thread-writer-locks"
 
 
 def get_lock_file(session_id: str) -> Path:
@@ -35,6 +37,7 @@ def is_lock_free(lock_path: Path | str) -> bool:
         with open(path, "r+", encoding="utf-8", errors="ignore") as f:
             if sys.platform == "win32":
                 import msvcrt
+
                 try:
                     # Non-blocking lock test on Windows
                     msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
@@ -44,6 +47,7 @@ def is_lock_free(lock_path: Path | str) -> bool:
                     return False
             else:
                 import fcntl
+
                 try:
                     # Non-blocking lock test on Unix/Linux/macOS
                     fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -65,7 +69,9 @@ def is_thread_locked(session_id: str) -> bool:
     return not is_lock_free(get_lock_file(session_id))
 
 
-def wait_for_lock_release(session_id: str, timeout: float = 10.0, poll_interval: float = 0.5) -> bool:
+def wait_for_lock_release(
+    session_id: str, timeout: float = 10.0, poll_interval: float = 0.5, cancel=None
+) -> bool:
     """
     Poll until the thread lock is verified to be completely released.
     Returns True if lock was released within timeout, False otherwise.
@@ -74,11 +80,16 @@ def wait_for_lock_release(session_id: str, timeout: float = 10.0, poll_interval:
         return True
 
     lock_file = get_lock_file(session_id)
-    start_time = time.time()
+    start_time = time.monotonic()
 
-    while time.time() - start_time < timeout:
+    while time.monotonic() - start_time < timeout:
+        if cancel is not None and cancel.is_set():
+            return False
         if is_lock_free(lock_file):
             return True
-        time.sleep(poll_interval)
+        if cancel is None:
+            time.sleep(poll_interval)
+        else:
+            cancel.wait(poll_interval)
 
     return False

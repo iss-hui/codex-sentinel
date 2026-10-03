@@ -12,7 +12,8 @@ from typing import Any, Dict, List, Optional
 
 def get_sessions_dir() -> Path:
     """Return the platform-agnostic sessions directory: ~/.codex/sessions"""
-    return Path.home() / ".codex" / "sessions"
+    from codex_sentinel.session_scanner import get_codex_dir
+    return get_codex_dir() / "sessions"
 
 
 def get_recent_session_files(limit: int = 15) -> List[Path]:
@@ -80,7 +81,7 @@ def parse_session_file(filepath: Path) -> Optional[Dict[str, Any]]:
                 latest_task_complete = payload
 
             if p_type == "token_count" and latest_rate_limit is None:
-                rate_limits = payload.get("rate_limits", {})
+                rate_limits = payload.get("rate_limits") or {}
                 primary = rate_limits.get("primary")
                 if primary and primary.get("resets_at"):
                     latest_rate_limit = primary

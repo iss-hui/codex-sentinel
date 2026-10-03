@@ -53,12 +53,15 @@ jobs:
       - name: Compile Windows EXE
         run: |
           pyinstaller --clean --noconfirm --onefile --name codex-sentinel-windows-x64 --console run_sentinel.py
+          python scripts/build_windows.py
 
       - name: Upload Windows EXE
         uses: actions/upload-artifact@v4
         with:
           name: windows-exe
-          path: dist/codex-sentinel-windows-x64.exe
+          path: |
+            dist/codex-sentinel-windows-x64.exe
+            dist/CodexSentinel-windows-x64.zip
 
   build-linux-binary:
     name: Build Linux Standalone Binary

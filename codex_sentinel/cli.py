@@ -35,13 +35,13 @@ def parse_args() -> argparse.Namespace:
         "--lang",
         type=str,
         choices=["auto", "zh", "en"],
-        default="auto",
+        default=None,
         help="Display language: 'auto' (detect from system), 'zh' (Chinese), or 'en' (English).",
     )
     parser.add_argument(
         "--buffer",
         type=int,
-        default=30,
+        default=None,
         help="Buffer wait seconds after resets_at timestamp before waking up CLI (default: 30s).",
     )
     parser.add_argument(
@@ -65,12 +65,26 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Check and display current rate limit status once and exit.",
     )
+    parser.add_argument(
+        "--gui",
+        action="store_true",
+        help="Launch the desktop GUI application (default when PySide6 is available).",
+    )
+    parser.add_argument(
+        "--daemon",
+        action="store_true",
+        help="Run in headless CLI daemon mode (original behavior).",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    set_lang(args.lang)
+    set_lang(args.lang or "auto")
+    if args.buffer is not None and not 0 <= args.buffer <= 600:
+        raise SystemExit("--buffer must be between 0 and 600 seconds")
+    if args.gui and args.daemon:
+        raise SystemExit("Choose either --gui or --daemon")
 
     prompt = args.prompt if args.prompt is not None else t("default_resume_prompt")
 
@@ -90,9 +104,34 @@ def main() -> None:
             print(t("status_normal_exit"))
             sys.exit(0)
 
+    # Determine launch mode: GUI (default) or CLI daemon
+    use_gui = not args.daemon  # GUI is default unless --daemon is specified
+
+    if args.gui:
+        use_gui = True  # Explicit --gui overrides
+
+    if use_gui:
+        try:
+            from codex_sentinel.gui.app import main as gui_main
+        except ImportError as exc:
+            raise SystemExit(f"GUI dependency unavailable: {exc}. Install PySide6 or use --daemon.") from exc
+        overrides = {}
+        if args.lang is not None:
+            overrides["language"] = args.lang
+        if args.buffer is not None:
+            overrides["buffer_seconds"] = args.buffer
+        if args.prompt is not None:
+            overrides["resume_prompt"] = args.prompt
+        raise SystemExit(gui_main(overrides=overrides, dry_run=args.dry_run))
+    else:
+        _run_daemon(args, prompt)
+
+
+def _run_daemon(args, prompt: str) -> None:
+    """Run the legacy CLI daemon mode."""
     try:
         run_daemon(
-            buffer_seconds=args.buffer,
+            buffer_seconds=args.buffer if args.buffer is not None else 30,
             prompt=prompt,
             auto_relaunch=not args.no_relaunch,
             dry_run=args.dry_run,
