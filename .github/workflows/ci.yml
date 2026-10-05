@@ -53,10 +53,9 @@ jobs:
     - name: Annotate test failure
       if: failure()
       run: |
-        cat pytest_output.txt
-        while IFS= read -r line; do
+        grep -A 8 "FAILED " pytest_output.txt | head -n 9 | while IFS= read -r line; do
           if [ -n "$line" ]; then
-            echo "::warning title=PytestFailure::$line"
+            echo "::error title=PytestError::$line"
           fi
-        done < <(tail -n 35 pytest_output.txt)
+        done
       shell: bash
