@@ -50,16 +50,13 @@ jobs:
         fi
       shell: bash
 
-    - name: Report failure to GitHub Issue
-      if: failure() && runner.os == 'macOS'
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        gh issue create --title "macOS CI Log (${{ matrix.python-version }})" --body "$(tail -n 80 pytest_output.txt)" || true
-      shell: bash
-
-    - name: Output pytest log on failure
+    - name: Annotate test failure
       if: failure()
       run: |
         cat pytest_output.txt
+        while IFS= read -r line; do
+          if [ -n "$line" ]; then
+            echo "::warning title=PytestFailure::$line"
+          fi
+        done < <(tail -n 35 pytest_output.txt)
       shell: bash
