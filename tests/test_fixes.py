@@ -68,7 +68,12 @@ def test_session_catalog_timestamp_iso_and_fallback():
 
 
 def test_combo_folder_heading_unselectable(app):
+    from PySide6.QtWidgets import QStyleFactory
+
     combo = QComboBox()
+    fusion = QStyleFactory.create("Fusion")
+    if fusion:
+        combo.setStyle(fusion)
     populate_sessions(combo, [
         {"session_id": "s1", "title": "Session 1", "cwd": "/project/a"},
         {"session_id": "s2", "title": "Session 2", "cwd": "/project/b"},
@@ -77,6 +82,9 @@ def test_combo_folder_heading_unselectable(app):
     assert combo.model().item(1).flags() == Qt.ItemFlag.NoItemFlags
     assert not (combo.model().item(1).flags() & Qt.ItemFlag.ItemIsSelectable)
     assert not (combo.model().item(1).flags() & Qt.ItemFlag.ItemIsEnabled)
+    assert combo.model().item(3).flags() == Qt.ItemFlag.NoItemFlags
+    assert not (combo.model().item(3).flags() & Qt.ItemFlag.ItemIsSelectable)
+    assert not (combo.model().item(3).flags() & Qt.ItemFlag.ItemIsEnabled)
     combo.setCurrentIndex(combo.findData("s1"))
     QTest.keyClick(combo, Qt.Key.Key_Down)
     assert combo.currentData() == "s2"

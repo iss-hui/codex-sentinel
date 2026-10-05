@@ -38,9 +38,10 @@ def test_only_supervisor_roots_are_selected(monkeypatch):
 
 
 def test_handoff_never_kills_its_own_ancestor(monkeypatch):
+    import os
     import psutil
 
-    ancestor = psutil.Process().parent()
+    ancestor = SimpleNamespace(pid=os.getpid(), info={"exe": "codex.exe"})
     monkeypatch.setattr(
         "codex_sentinel.desktop_handoff.desktop_roots", lambda: [ancestor]
     )
