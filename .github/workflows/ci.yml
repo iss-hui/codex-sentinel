@@ -50,6 +50,11 @@ jobs:
         fi
       shell: bash
 
+    - name: Print test log on failure
+      if: failure()
+      run: cat pytest_output.txt
+      shell: bash
+
     - name: Annotate test failure
       if: failure()
       run: |

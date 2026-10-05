@@ -8,6 +8,20 @@ import argparse
 import sys
 from datetime import datetime
 
+# Ensure stdout/stderr are valid streams in windowed GUI mode without console
+if sys.stdout is None:
+    import os
+    try:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    except Exception:
+        pass
+if sys.stderr is None:
+    import os
+    try:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")
+    except Exception:
+        pass
+
 # Ensure utf-8 encoding for stdout/stderr across all platforms and Windows code pages
 if hasattr(sys.stdout, "reconfigure"):
     try:

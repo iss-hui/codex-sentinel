@@ -52,7 +52,7 @@ jobs:
 
       - name: Compile Windows EXE
         run: |
-          pyinstaller --clean --noconfirm --onefile --name codex-sentinel-windows-x64 --console run_sentinel.py
+          pyinstaller --clean --noconfirm --onefile --name codex-sentinel-windows-x64 --windowed run_sentinel.py
           python scripts/build_windows.py
 
       - name: Upload Windows EXE

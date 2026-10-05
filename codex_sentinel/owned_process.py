@@ -130,13 +130,15 @@ class OwnedProcess:
             if self.job and self.job.handle:
                 self.job.finish()
             elif self.process and not self.job:
-                # The process group survives its leader, so orphaned helpers
-                # are still cleaned up without searching unrelated processes.
+                for sig in (signal.SIGTERM, signal.SIGKILL):
+                    try:
+                        os.killpg(self.process.pid, sig)
+                    except (ProcessLookupError, PermissionError, OSError):
+                        pass
+                    time.sleep(0.05)
                 try:
-                    os.killpg(self.process.pid, signal.SIGTERM)
-                    time.sleep(0.1)
-                    os.killpg(self.process.pid, signal.SIGKILL)
-                except ProcessLookupError:
+                    self.process.kill()
+                except Exception:
                     pass
         finally:
             if self.job:
@@ -146,4 +148,7 @@ class OwnedProcess:
                     if self.process.stdin and not self.process.stdin.closed:
                         self.process.stdin.close()
                 finally:
-                    self.process.wait(timeout=5)
+                    try:
+                        self.process.wait(timeout=5)
+                    except Exception:
+                        pass
