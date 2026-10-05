@@ -103,6 +103,7 @@ def test_completed_turn_reaps_helpers_and_releases_writer_lock(
     tmp_path, monkeypatch, isolated_codex_home, linger
 ):
     import json
+    import time
 
     import psutil
 
@@ -140,7 +141,13 @@ def test_completed_turn_reaps_helpers_and_releases_writer_lock(
     )
     assert result["code"] == 0, result
     assert result["cleanup_ok"], result
+    deadline = time.monotonic() + 3
+    while is_thread_locked(session_id) and time.monotonic() < deadline:
+        time.sleep(0.05)
     assert not is_thread_locked(session_id)
+    deadline = time.monotonic() + 3
+    while any(psutil.pid_exists(pid) for pid in json.loads(pids.read_text())) and time.monotonic() < deadline:
+        time.sleep(0.05)
     assert not any(psutil.pid_exists(pid) for pid in json.loads(pids.read_text()))
 
 
