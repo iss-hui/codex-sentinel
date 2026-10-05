@@ -39,9 +39,26 @@ jobs:
       env:
         QT_QPA_PLATFORM: offscreen
       run: |
+        set -o pipefail
         if [ "$RUNNER_OS" = "Linux" ]; then
-          xvfb-run -a pytest -v tests/
+          xvfb-run -a pytest -v --tb=short tests/ 2>&1 | tee pytest_output.txt
         else
-          pytest -v tests/
+          pytest -v --tb=short tests/ 2>&1 | tee pytest_output.txt
         fi
       shell: bash
+
+    - name: Report pytest output to Step Summary
+      if: always()
+      run: |
+        echo "### Pytest output: ${{ matrix.os }} Python ${{ matrix.python-version }}" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        tail -n 100 pytest_output.txt >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+      shell: bash
+
+    - name: Upload pytest log
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: pytest-${{ matrix.os }}-${{ matrix.python-version }}
+        path: pytest_output.txt
