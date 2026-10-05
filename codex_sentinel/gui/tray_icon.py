@@ -29,20 +29,34 @@ class SentinelTrayIcon(QSystemTrayIcon):
             action.triggered.connect(signal)
             self.menu.addAction(action)
         self.setContextMenu(self.menu)
-        self.set_state("normal")
+        self.set_state("unknown")
         self.activated.connect(self._on_activated)
 
     def _on_activated(self, reason):
-        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+        if reason in (
+            QSystemTrayIcon.ActivationReason.Trigger,
+            QSystemTrayIcon.ActivationReason.DoubleClick,
+        ):
             self.show_dashboard_requested.emit()
 
     def set_state(self, state):
         colors = {
+            "unknown": "#7f849c",
             "normal": "#10b981",
             "limited": "#f59e0b",
             "resuming": "#3b82f6",
             "error": "#ef4444",
         }
+        labels = {
+            "unknown": tr("状态未知 / 等待本地更新", "Unknown / awaiting local update"),
+            "normal": tr("正常监控中", "Monitoring"),
+            "limited": tr("限额冷却中", "Rate limited"),
+            "resuming": tr("正在恢复会话", "Resuming session"),
+            "error": tr("错误", "Error"),
+        }
+        presentation = (state, labels.get(state, state))
+        if getattr(self, "_presentation", None) == presentation:
+            return
         pixmap = QPixmap(32, 32)
         pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
@@ -52,7 +66,8 @@ class SentinelTrayIcon(QSystemTrayIcon):
         painter.drawEllipse(4, 4, 24, 24)
         painter.end()
         self.setIcon(QIcon(pixmap))
-        self.setToolTip("Codex Sentinel · " + state)
+        self.setToolTip(f"Codex Sentinel · {labels.get(state, state)}")
+        self._presentation = presentation
 
     def show_notification(self, title, message):
         self.showMessage(title, message, QSystemTrayIcon.MessageIcon.Information, 3000)

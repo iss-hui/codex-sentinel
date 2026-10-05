@@ -94,16 +94,29 @@ def parse_session_file(filepath: Path) -> Optional[Dict[str, Any]]:
     if latest_task_complete and latest_task_complete.get("error") and latest_rate_limit:
         err = latest_task_complete["error"]
         err_str = str(err).lower()
-        if err.get("codex_error_info") == "usage_limit_exceeded" or "usage limit" in err_str:
+        is_codex_err = (
+            isinstance(err, dict)
+            and err.get("codex_error_info") == "usage_limit_exceeded"
+        )
+        if (
+            is_codex_err
+            or "usage_limit_exceeded" in err_str
+            or "usage limit" in err_str
+        ):
             resets_at = latest_rate_limit["resets_at"]
             now = time.time()
             if resets_at > now:
+                error_msg = (
+                    err.get("message", "Usage limit reached")
+                    if isinstance(err, dict)
+                    else str(err)
+                )
                 return {
                     "session_id": session_id,
                     "file": str(filepath),
                     "cwd": cwd or str(Path.cwd()),
                     "resets_at": resets_at,
-                    "error_msg": err.get("message", "Usage limit reached"),
+                    "error_msg": error_msg,
                     "model": latest_model or "Desktop App Default",
                     "used_percent": latest_rate_limit.get("used_percent", 100),
                     "remaining_seconds": resets_at - now,

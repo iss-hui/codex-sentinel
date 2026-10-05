@@ -62,18 +62,18 @@ class SessionsPage(QWidget):
         self.table.setRowCount(len(sessions))
         for row, session in enumerate(sessions):
             values = [
-                session.get("title") or session["session_id"],
-                session["model"],
+                session.get("title") or session.get("session_id", ""),
+                session.get("model") or tr("默认", "Default"),
                 time_text(session.get("updated_at")),
-                session["cwd"],
+                session.get("cwd") or "—",
                 str(
                     session.get("tokens_used")
                     if session.get("tokens_used") is not None
                     else "—"
                 ),
-                status_text(session["task_status"]),
-                str(session["total_turns"])
-                if session["total_turns"] is not None
+                status_text(session.get("task_status", "unknown")),
+                str(session.get("total_turns"))
+                if session.get("total_turns") is not None
                 else "—",
             ]
             for column, value in enumerate(values):

@@ -286,3 +286,64 @@ def test_long_log_keeps_target_and_actual_thread_ids_visible(window, tmp_path):
     assert "实际启动会话 ID: test-session" in detail
     assert "Other project titles" in detail
     assert page.table.item(0, 3).text() == "测试对话"
+
+
+def test_saving_language_keeps_current_ui_until_restart(window):
+    from codex_sentinel.i18n import get_lang
+
+    original_title = window.nav_buttons[0].text()
+    window._save_settings({"language": "en"})
+    assert window.manager.load()["language"] == "en"
+    assert get_lang() == "zh"
+    assert window.nav_buttons[0].text() == original_title
+    assert window.page_dashboard.lbl_status.text() == "设置已保存"
+
+
+@pytest.mark.parametrize("code, cleanup_ok", [(1, True), (0, False)])
+def test_tray_keeps_execution_errors_after_poll(window, tmp_path, code, cleanup_ok):
+    from types import SimpleNamespace
+
+    from codex_sentinel.gui.tray_icon import SentinelTrayIcon
+
+    window.tray = SentinelTrayIcon()
+    window.settings["show_notifications"] = False
+    window._on_snapshot(snapshot(tmp_path))
+    task = window.scheduler.add_task("test", "hello", str(tmp_path))
+    window.executor = SimpleNamespace(task=task)
+    window._execution_completed({"code": code, "error": "failure", "cleanup_ok": cleanup_ok})
+    window.executor = None
+    window._tick()
+    assert "错误" in window.tray.toolTip()
+
+
+def test_tray_does_not_report_monitoring_with_stale_data(window, tmp_path):
+    from codex_sentinel.gui.tray_icon import SentinelTrayIcon
+
+    window.tray = SentinelTrayIcon()
+    data = snapshot(tmp_path)
+    data["scanned_at"] -= 1000
+    window._on_snapshot(data)
+    window._tick()
+    assert "未知" in window.tray.toolTip()
+    data["scanned_at"] = time.time()
+    data["buckets"]["codex"]["primary"]["used_percent"] = 100
+    window._tick()
+    assert "限额冷却" in window.tray.toolTip()
+    window._scan_error("unreadable data")
+    window._tick()
+    assert "未知" in window.tray.toolTip()
+
+
+def test_secondary_window_returns_after_bucket_changes(window, tmp_path):
+    data = snapshot(tmp_path)
+    data["buckets"]["codex"]["secondary"] = None
+    window._on_snapshot(data)
+    page = window.page_dashboard
+    assert page.window_bars[1].format() == "无"
+    assert not page.window_bars[1].isEnabled()
+    data["buckets"]["codex"]["secondary"] = {
+        "window_minutes": 10080, "resets_at": time.time() + 86400, "used_percent": 50,
+    }
+    window._on_snapshot(data)
+    assert page.window_bars[1].isEnabled()
+    assert page.window_bars[1].value() == 50

@@ -152,6 +152,14 @@ class DashboardPage(QWidget):
         exhausted = False
         reset = 0
         for i, key in enumerate(("primary", "secondary")):
+            if i == 1 and limits and "secondary" in limits and limits.get("secondary") is None:
+                name = tr("周 / 次窗口", "Weekly / secondary")
+                value = tr("无", "None")
+                self.window_labels[i].setText(f"{name} · {value}\n{tr('重置', 'Reset')}: —")
+                self.window_bars[i].setValue(0)
+                self.window_bars[i].setFormat(value)
+                self.window_bars[i].setEnabled(False)
+                continue
             window = limits.get(key) or {}
             pct, end = window.get("used_percent"), window.get("resets_at")
             stale = bool(end and end <= now)

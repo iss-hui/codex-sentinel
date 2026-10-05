@@ -60,8 +60,13 @@ class CountdownRing(QWidget):
 
         font = QFont("Arial", 10)
         painter.setFont(font)
+        sub_text = (
+            tr("距记录的重置时间", "until recorded reset")
+            if self.remaining_seconds > 0
+            else tr("暂无有效倒计时", "No active local countdown")
+        )
         painter.drawText(
             rect.adjusted(0, 40, 0, 0),
             Qt.AlignmentFlag.AlignCenter,
-            tr("距记录的重置时间", "until recorded reset"),
+            sub_text,
         )

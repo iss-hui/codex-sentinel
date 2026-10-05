@@ -68,7 +68,7 @@ def populate_sessions(combo, sessions, new_session=True):
                 folder,
             )
             heading = combo.model().item(combo.count() - 1)
-            heading.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            heading.setFlags(Qt.ItemFlag.NoItemFlags)
             font = heading.font()
             font.setBold(True)
             heading.setFont(font)

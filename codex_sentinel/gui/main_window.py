@@ -35,6 +35,7 @@ class MainWindow(QMainWindow):
         self.scheduler = QuotaScheduler(self.manager.config_dir)
         self.snapshot = {}
         self.executor = None
+        self._execution_error = False
         self.executor_factory = ExecutionWorker
         self.tray = None
         self._quitting = False
@@ -282,14 +283,17 @@ class MainWindow(QMainWindow):
 
     def _tick(self):
         self.page_dashboard.render_limits()
+        if self._quitting:
+            return
+        now = time.time()
+        if self.tray and self.executor is None:
+            self._update_tray_state(now)
         if (
-            self._quitting
-            or self.executor is not None
+            self.executor is not None
             or not self.snapshot
             or not self.snapshot.get("available", True)
         ):
             return
-        now = time.time()
         if now - self.snapshot.get("scanned_at", 0) > max(
             30, self.settings["poll_interval"] * 3
         ):
@@ -326,6 +330,7 @@ class MainWindow(QMainWindow):
                         take_over_desktop=self.settings["take_over_desktop"],
                     )
                     self.executor = worker
+                    self._execution_error = False
                     worker.completed.connect(self._execution_completed)
                     worker.output_line.connect(lambda _: self.page_tasks.show_detail())
                     worker.progress.connect(self._execution_progress)
@@ -339,11 +344,33 @@ class MainWindow(QMainWindow):
             self._refresh_queue()
         except Exception as exc:
             # A persistence error must never become an unrecorded execution.
+            self._execution_error = True
             self.settings["queue_enabled"] = False
             self._load_settings()
             self.statusBar().showMessage(
                 tr("执行已暂停：", "Execution paused: ") + str(exc)
             )
+
+    def _update_tray_state(self, now):
+        if self._execution_error:
+            state = "error"
+        elif (
+            not self.snapshot
+            or not self.snapshot.get("available", True)
+            or now - self.snapshot.get("scanned_at", 0)
+            > max(30, self.settings["poll_interval"] * 3)
+        ):
+            state = "unknown"
+        else:
+            limited = any(
+                isinstance(w, dict)
+                and (w.get("used_percent") or 0) >= 100
+                and (w.get("resets_at") or 0) > now
+                for bucket in self.snapshot.get("buckets", {}).values()
+                for w in (bucket.get("primary"), bucket.get("secondary"))
+            )
+            state = "limited" if limited else "normal"
+        self.tray.set_state(state)
 
     def _execution_progress(self, phase):
         labels = {
@@ -364,6 +391,11 @@ class MainWindow(QMainWindow):
     def _execution_completed(self, result):
         task = self.executor.task
         code = result["code"]
+        self._execution_error = (
+            code not in (0, 75)
+            or not result.get("cleanup_ok", True)
+            or (code == 0 and bool(result.get("error")))
+        )
         try:
             if not result.get("cleanup_ok", True):
                 self.manager.save({"queue_enabled": False})
@@ -401,12 +433,13 @@ class MainWindow(QMainWindow):
             if self.tray and self.settings["show_notifications"] and code != 75:
                 self.tray.show_notification("Codex Sentinel", message)
             if self.tray:
-                self.tray.set_state("normal" if code == 0 else "error")
+                self._update_tray_state(time.time())
             if self.settings["play_sound"] and code != 75:
                 QApplication.beep()
             self._refresh_queue()
             self.monitor_worker.refresh()
         except Exception as exc:
+            self._execution_error = True
             self.settings["queue_enabled"] = False
             self.statusBar().showMessage(str(exc))
 

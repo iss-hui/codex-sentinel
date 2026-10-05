@@ -167,13 +167,26 @@ class QuotaTimerPage(QWidget):
                 )
                 return
         elif mode == "next":
+            buckets = self.snapshot.get("buckets", {})
+            session = next(
+                (s for s in self.snapshot.get("sessions", [])
+                 if s["session_id"] == self.cmb_session.currentData()),
+                {},
+            )
+            key = session.get("limits", {}).get("limit_id")
+            limits = (
+                [buckets[key]]
+                if key in buckets
+                and self.cmb_model.currentText().strip() == session.get("model")
+                else buckets.values()
+            )
             resets = [
                 w["resets_at"]
-                for b in self.snapshot.get("buckets", {}).values()
+                for b in limits
                 for w in (b.get("primary"), b.get("secondary"))
                 if isinstance(w, dict)
                 and w.get("window_minutes") == 300
-                and w.get("resets_at", 0) > now
+                and (w.get("resets_at") or 0) > now
             ]
             if not resets:
                 QMessageBox.warning(
@@ -185,7 +198,7 @@ class QuotaTimerPage(QWidget):
                     ),
                 )
                 return
-            at = max(resets)
+            at = min(resets)
         self.task_requested.emit(
             dict(
                 id=self.editing_id,
@@ -231,10 +244,14 @@ class QuotaTimerPage(QWidget):
 
     def saved(self, task):
         self.editing_id = None
+        due = (
+            task.scheduled_at + task.buffer_seconds
+            if task.scheduled_at is not None else None
+        )
         self.lbl_summary.setText(
             tr(
                 "已保存；最早执行时间（含缓冲）：",
                 "Saved; earliest execution (including buffer): ",
             )
-            + time_text(task.scheduled_at + task.buffer_seconds)
+            + time_text(due)
         )

@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -31,6 +32,7 @@ class TaskQueuePage(QWidget):
         super().__init__(parent)
         self.tasks = []
         self.session_titles = {}
+        self._detail_task_id = None
         layout = QVBoxLayout(self)
         self.chk_auto = QCheckBox(
             tr(
@@ -87,7 +89,8 @@ class TaskQueuePage(QWidget):
         layout.addLayout(row)
         self.detail = QPlainTextEdit()
         self.detail.setReadOnly(True)
-        self.detail.setMaximumBlockCount(1000)
+        # The log read is already bounded. A block cap would silently discard
+        # the target header and make every refresh appear to change the text.
         layout.addWidget(self.detail, 1)
 
     def selected_id(self):
@@ -121,7 +124,7 @@ class TaskQueuePage(QWidget):
                 or task.session_id
                 or tr("新建", "New"),
                 status_text(task.status),
-                task.last_error,
+                task.last_error.replace("\n", " ") if task.last_error else "",
             ]
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
@@ -139,11 +142,21 @@ class TaskQueuePage(QWidget):
         task = next((t for t in self.tasks if t.id == self.selected_id()), None)
         if task is None:
             self.detail.clear()
+            self._detail_task_id = None
+            return
+        same_task = task.id == self._detail_task_id
+        # While the user copies text, retain the displayed log even if the
+        # bounded tail moves. The next refresh after deselection catches up.
+        if same_task and self.detail.textCursor().hasSelection():
             return
         title = (
             self.session_titles.get(task.session_id)
             or task.session_id
             or tr("新建对话", "New conversation")
+        )
+        error_part = (
+            f"\n{tr('错误 / 原因: ', 'Error / reason: ')}{task.last_error}\n"
+            if task.last_error else ""
         )
         text = (
             f"{task.name}\n"
@@ -151,7 +164,7 @@ class TaskQueuePage(QWidget):
             f"{tr('目标会话 ID', 'Target thread ID')}: {task.session_id or '—'}\n"
             f"{tr('模型', 'Model')}: {task.model or tr('默认', 'Default')}\n"
             f"{tr('工作目录', 'Directory')}: {task.cwd}\n"
-            f"{tr('发送语句', 'Prompt')}: {task.prompt}\n\n{task.last_error}\n"
+            f"{tr('发送语句', 'Prompt')}: {task.prompt}\n{error_part}\n"
         )
         if task.log_file:
             text += f"Log: {task.log_file}\n"
@@ -188,4 +201,22 @@ class TaskQueuePage(QWidget):
                     text += stream.read().decode("utf-8", errors="replace")
             except OSError as exc:
                 text += str(exc)
-        self.detail.setPlainText(text)
+        # QTextDocument normalizes Windows newlines; compare the same form so
+        # unchanged logs do not trigger a full replacement on every tick.
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        previous = self.detail.toPlainText()
+        if previous == text:
+            self._detail_task_id = task.id
+            return
+        vsb = self.detail.verticalScrollBar()
+        at_bottom = same_task and vsb.value() == vsb.maximum()
+        old_val = vsb.value()
+        if same_task and text.startswith(previous):
+            # Append without resetting Qt's lazily laid-out wrapped lines.
+            cursor = QTextCursor(self.detail.document())
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            cursor.insertText(text[len(previous):])
+        else:
+            self.detail.setPlainText(text)
+        vsb.setValue(vsb.maximum() if at_bottom else old_val if same_task else 0)
+        self._detail_task_id = task.id

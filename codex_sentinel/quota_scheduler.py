@@ -96,7 +96,10 @@ class QuotaScheduler:
         self.update(task, status="cancelled")
 
     def get(self, task_id):
-        return next(t for t in self.task_queue if t.id == task_id)
+        task = next((t for t in self.task_queue if t.id == task_id), None)
+        if task is None:
+            raise KeyError(f"Task not found: {task_id}")
+        return task
 
     def update(self, task, **changes):
         old = {key: getattr(task, key) for key in changes}

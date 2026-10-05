@@ -40,16 +40,27 @@ def main(overrides=None, dry_run=False, smoke_test=False):
     manager = ConfigManager()
     manager.config_dir.mkdir(parents=True, exist_ok=True)
     lock = QLockFile(str(manager.config_dir / "desktop.lock"))
+    # This lock lives for the whole application lifetime. tryLock already
+    # recovers locks owned by dead processes; never force-remove a live lock.
+    lock.setStaleLockTime(0)
     if not lock.tryLock(0):
-        QMessageBox.information(
-            None,
-            "Codex Sentinel",
-            tr(
-                "应用已运行，请查看系统托盘。",
-                "Already running. Check the system tray.",
-            ),
-        )
-        return 0
+        if lock.error() == QLockFile.LockError.LockFailedError:
+            QMessageBox.information(
+                None,
+                "Codex Sentinel",
+                tr("应用已运行，请查看系统托盘。", "Already running. Check the system tray."),
+            )
+            return 0
+        else:
+            QMessageBox.critical(
+                None,
+                "Codex Sentinel",
+                tr(
+                    "无法创建应用锁，请检查配置目录的权限和可用空间：",
+                    "Cannot create the app lock. Check directory permissions and free space: ",
+                ) + str(manager.config_dir),
+            )
+            return 1
     try:
         settings = manager.load()
         if overrides:

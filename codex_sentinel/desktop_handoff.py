@@ -98,15 +98,29 @@ class DesktopHandoff:
                 "Sentinel was started by Codex. Start Sentinel separately before taking over the desktop."
             )
         for root in roots:
-            executable = root.exe()
+            executable = root.info.get("exe")
+            if not executable:
+                try:
+                    executable = root.exe()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
             # Remember before closing so partial failures still restore the app.
-            if executable not in self.closed_executables:
+            if executable and executable not in self.closed_executables:
                 self.closed_executables.append(executable)
             terminate_tree(root)
         return bool(roots)
 
     def reopen(self):
-        running = {p.exe() for p in desktop_roots()}
+        running = set()
+        for p in desktop_roots():
+            exe = p.info.get("exe")
+            if not exe:
+                try:
+                    exe = p.exe()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            if exe:
+                running.add(exe)
         for executable in self.closed_executables:
             if executable not in running:
                 launch_desktop(executable)

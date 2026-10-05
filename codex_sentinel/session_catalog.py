@@ -7,8 +7,10 @@ recency timestamps and persisted project membership. All reads here are local.
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 from contextlib import closing
+from datetime import datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 
@@ -119,9 +121,23 @@ def _read_state(codex_dir, warnings):
 
 
 def _timestamp(row, key, fallback=0):
-    if row.get(key + "_ms") is not None:
-        return row[key + "_ms"] / 1000
-    return row.get(key) if row.get(key) is not None else fallback
+    for value, scale in ((row.get(key + "_ms"), 1000), (row.get(key), 1), (fallback, 1)):
+        if value is None:
+            continue
+        try:
+            try:
+                result = float(value) / scale
+            except (ValueError, TypeError):
+                if scale != 1 or not isinstance(value, str):
+                    continue
+                result = datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+            if math.isfinite(result):
+                # The GUI must be able to render this timestamp on this OS.
+                datetime.fromtimestamp(result)
+                return result
+        except (ValueError, TypeError, OverflowError, OSError):
+            continue
+    return 0.0
 
 
 def _projects(state, db_projects, db_roots, codex_dir):

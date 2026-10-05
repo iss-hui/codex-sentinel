@@ -50,3 +50,28 @@ def test_handoff_never_kills_its_own_ancestor(monkeypatch):
     )
     with pytest.raises(RuntimeError, match="separately"):
         DesktopHandoff().close()
+
+
+def test_handoff_uses_enumerated_path_when_process_query_is_denied(monkeypatch):
+    import psutil
+
+    executable = r"C:\Users\me\AppData\Local\OpenAI\Codex\Codex.exe"
+
+    def denied():
+        raise psutil.AccessDenied(100)
+
+    root = SimpleNamespace(pid=100, info={"exe": executable}, exe=denied)
+    monkeypatch.setattr("codex_sentinel.desktop_handoff.desktop_roots", lambda: [root])
+    monkeypatch.setattr("codex_sentinel.desktop_handoff.psutil.Process",
+                        lambda: SimpleNamespace(parents=lambda: []))
+    killed, launched = [], []
+    monkeypatch.setattr("codex_sentinel.desktop_handoff.terminate_tree", killed.append)
+    monkeypatch.setattr("codex_sentinel.desktop_handoff.launch_desktop", launched.append)
+    handoff = DesktopHandoff()
+    assert handoff.close()
+    assert killed == [root]
+    handoff.reopen()
+    assert launched == []  # An already restarted desktop must not be duplicated.
+    monkeypatch.setattr("codex_sentinel.desktop_handoff.desktop_roots", lambda: [])
+    handoff.reopen()
+    assert launched == [executable]
