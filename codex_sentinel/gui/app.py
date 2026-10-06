@@ -81,8 +81,8 @@ def main(overrides=None, dry_run=False, smoke_test=False):
         tray.show_dashboard_requested.connect(
             lambda: (window.showNormal(), window.raise_(), window.activateWindow())
         )
-        tray.resume_now_requested.connect(window.queue_resume)
-        tray.pause_requested.connect(window.toggle_pause)
+        tray.resume_now_requested.connect(window.refresh_recovery)
+        tray.pause_requested.connect(window.toggle_recovery)
         tray.settings_requested.connect(
             lambda: (window.showNormal(), window.switch_page(4))
         )

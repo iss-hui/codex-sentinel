@@ -13,7 +13,6 @@ DEFAULT_CONFIG = {
     "buffer_seconds": 30,
     "auto_resume": False,
     "resume_prompt": "",
-    "resume_sandbox": "read-only",
     "minimize_to_tray": True,
     "show_notifications": True,
     "play_sound": False,
@@ -71,8 +70,6 @@ class ConfigManager:
                 raise ValueError(f"Invalid setting: {key}")
         if config["language"] not in ("auto", "zh", "en"):
             raise ValueError("Invalid language")
-        if config["resume_sandbox"] not in ("read-only", "workspace-write"):
-            raise ValueError("Invalid resume sandbox")
         if not 1 <= config["poll_interval"] <= 300:
             raise ValueError("Poll interval must be between 1 and 300 seconds")
         if not 0 <= config["buffer_seconds"] <= 600:

@@ -19,6 +19,7 @@ class MonitorWorker(QThread):
         self.poll_interval = poll_interval
         self._stop = threading.Event()
         self._wake = threading.Event()
+        self.recovery_session_id = ""
 
     def run(self):
         scanner = None
@@ -28,7 +29,7 @@ class MonitorWorker(QThread):
                 if scanner is None or directory != getattr(self, "_directory", None):
                     scanner = SessionScanner(sessions_dir=directory)
                     self._directory = directory
-                snapshot = scanner.scan()
+                snapshot = scanner.scan(watch_session_id=self.recovery_session_id)
                 snapshot["models"] = get_available_models(scanner.codex_dir)
                 if not self._stop.is_set():
                     self.snapshot_ready.emit(snapshot)

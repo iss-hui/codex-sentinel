@@ -28,22 +28,28 @@ set_lang("zh")
 window = MainWindow(manager=ConfigManager(output / "settings"), start_workers=False, dry_run=True)
 now = time.time()
 limits = {"limit_id": "codex", "plan_type": "plus", "observed_at": now - 70,
-          "primary": {"used_percent": 76, "window_minutes": 300, "resets_at": now + 8520},
+          "primary": {"used_percent": 100, "window_minutes": 300, "resets_at": now + 8520},
           "secondary": {"used_percent": 44, "window_minutes": 10080, "resets_at": now + 300000}}
 session = {"session_id": "sample-local-conversation", "title": "示例：开发桌面应用", "model": "local-model",
-           "cwd": str(output.resolve()), "task_status": "completed", "total_turns": 12,
+           "cwd": str(output.resolve()), "task_status": "rate_limited", "total_turns": 12,
+           "project_name": "示例项目", "limited_at": now - 70, "limits_at": now - 70,
            "updated_at": now, "tokens_used": 24350, "limits": limits}
+window._save_settings({"auto_resume": True})
 window._on_snapshot({"scanned_at": now, "sessions": [session], "buckets": {"codex": limits},
                      "models": [{"slug": "local-model"}], "warnings": []})
 window.page_dashboard.txt_prompt.setPlainText("配额已恢复，请继续完成刚才被中断的任务。")
 window.page_quota.txt_name.setText("下午工作前启动窗口")
 window.scheduler.add_task("示例：启动下一窗口", "请只回复已启动", str(output.resolve()), "local-model", scheduled_at=now + 8520, kind="kick")
 window._refresh_queue()
+window._tick()
 window.show()
 for i, name in enumerate(("overview", "planner", "queue", "sessions", "settings")):
     window.switch_page(i)
     app.processEvents()
     window.grab().save(str(output / f"{name}.png"))
+window.show_recovery_history()
+app.processEvents()
+window.recovery_dialog.grab().save(str(output / "recovery-history.png"))
 window.request_quit()
 app.processEvents()
 print(str(output.resolve()))

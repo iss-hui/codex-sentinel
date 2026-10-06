@@ -76,7 +76,7 @@ class QuotaTimerPage(QWidget):
         self.txt_prompt.setMaximumHeight(100)
         form.addRow(tr("发送语句 / 任务", "Message / task"), self.txt_prompt)
         self.chk_write = QCheckBox(
-            tr("允许任务修改工作目录中的文件", "Allow task to edit workspace files")
+            tr("允许任务修改文件并使用自动审批", "Allow workspace edits and automatic approval reviews")
         )
         form.addRow(self.chk_write)
         self.cmb_schedule = QComboBox()

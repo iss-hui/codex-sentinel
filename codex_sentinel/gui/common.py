@@ -19,8 +19,17 @@ def time_text(value):
     )
 
 
+def permission_text(sandbox):
+    if sandbox == "workspace-write":
+        return tr("工作区可写 · 自动审批", "Workspace write · automatic approval reviews")
+    return tr("只读 · 不申请审批", "Read-only · no approval requests")
+
+
 def status_text(status):
     labels = {
+        "retry": ("等待网络重试", "Waiting to retry network failure"),
+        "awaiting_limit": ("等待新的限额时间", "Waiting for updated quota time"),
+        "migrated": ("已转入独立监控", "Moved to independent monitoring"),
         "pending": ("待执行", "Pending"),
         "paused": ("自动恢复已关闭", "Auto-resume disabled"),
         "waiting": ("等待限额 / 对话空闲", "Waiting"),

@@ -132,81 +132,6 @@ class QuotaScheduler:
         )
         self.save()
 
-    def sync_auto_resume(self, snapshot, settings, now):
-        sessions = {s["session_id"]: s for s in snapshot.get("sessions", [])}
-        for task in self.task_queue:
-            if task.kind != "resume" or task.status not in (
-                "pending",
-                "waiting",
-                "paused",
-            ):
-                continue
-            session = sessions.get(task.session_id)
-            if session and session["task_status"] != "rate_limited":
-                self.update(
-                    task,
-                    status="cancelled",
-                    last_error="Session has continued.",
-                )
-            elif not settings["auto_resume"]:
-                if task.status != "paused":
-                    self.update(task, status="paused")
-            else:
-                from codex_sentinel.i18n import t
-
-                desired = {
-                    "buffer_seconds": settings["buffer_seconds"],
-                    "prompt": settings["resume_prompt"] or t("default_resume_prompt"),
-                    "sandbox": settings["resume_sandbox"],
-                }
-                if task.status == "paused":
-                    desired["status"] = "pending"
-                changes = {k: v for k, v in desired.items() if getattr(task, k) != v}
-                if changes:
-                    self.update(task, **changes)
-        if not settings["auto_resume"]:
-            return
-        known = {t.auto_key for t in self.task_queue if t.auto_key}
-        for session in sessions.values():
-            if session["task_status"] != "rate_limited":
-                continue
-            if not session.get("cwd") or not Path(session["cwd"]).is_dir():
-                continue
-            limits = session.get("limits", {})
-            # At least one known exhausted window is required. Unknown reset times are not guessed.
-            windows = [
-                w
-                for w in (limits.get("primary"), limits.get("secondary"))
-                if isinstance(w, dict)
-                and (w.get("used_percent") or 0) >= 100
-                and w.get("resets_at")
-            ]
-            if not windows:
-                continue
-            reset = max(w["resets_at"] for w in windows)
-            key = f"{session['session_id']}:{session.get('limited_at', 0)}:{reset}"
-            if (
-                key in known
-                or reset + settings["buffer_seconds"] + settings["missed_grace_seconds"]
-                < now
-            ):
-                continue
-            from codex_sentinel.i18n import get_lang, t
-
-            self.add_task(
-                "到期恢复" if get_lang() == "zh" else "Auto resume",
-                settings["resume_prompt"] or t("default_resume_prompt"),
-                session["cwd"],
-                session["model"],
-                scheduled_at=reset,
-                session_id=session["session_id"],
-                kind="resume",
-                auto_key=key,
-                buffer_seconds=settings["buffer_seconds"],
-                sandbox=settings["resume_sandbox"],
-            )
-            known.add(key)
-
     def due_task(self, snapshot, settings, now=None):
         now = time.time() if now is None else now
         if not settings["queue_enabled"] or any(
@@ -217,7 +142,7 @@ class QuotaScheduler:
         for task in self.task_queue:
             if task.status not in ("pending", "waiting") or task.scheduled_at is None:
                 continue
-            if task.kind == "resume" and not settings["auto_resume"]:
+            if task.kind == "resume":
                 continue
             # Resolve quota conservatively: known session bucket, otherwise all local buckets.
             session = sessions.get(task.session_id, {})

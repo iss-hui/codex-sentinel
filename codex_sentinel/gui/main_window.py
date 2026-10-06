@@ -4,6 +4,7 @@ from pathlib import Path
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QHBoxLayout,
     QMainWindow,
     QMessageBox,
@@ -23,7 +24,7 @@ from codex_sentinel.gui.pages.sessions import SessionsPage
 from codex_sentinel.gui.pages.settings import SettingsPage
 from codex_sentinel.gui.pages.task_queue import TaskQueuePage
 from codex_sentinel.gui.workers import ExecutionWorker, MonitorWorker
-from codex_sentinel.i18n import t
+from codex_sentinel.recovery_monitor import RecoveryMonitor
 from codex_sentinel.quota_scheduler import QuotaScheduler
 
 
@@ -33,6 +34,9 @@ class MainWindow(QMainWindow):
         self.manager = manager or ConfigManager()
         self.settings = self.manager.load()
         self.scheduler = QuotaScheduler(self.manager.config_dir)
+        self.recovery = RecoveryMonitor(self.manager.config_dir)
+        self.recovery.migrate_legacy(self.scheduler)
+        self.recovery_dialog = None
         self.snapshot = {}
         self.executor = None
         self._execution_error = False
@@ -107,12 +111,13 @@ class MainWindow(QMainWindow):
         self.monitor_worker.snapshot_ready.connect(self._on_snapshot)
         self.monitor_worker.error_occurred.connect(self._scan_error)
         self.page_dashboard.settings_changed.connect(self._save_settings)
-        # The checkbox takes effect immediately; the prompt remains explicitly saved.
+        # Automatic recovery has its own switch, independent of the queue.
         self.page_dashboard.chk_auto_resume.toggled.connect(
             lambda value: self._save_settings({"auto_resume": value}, reload=False)
         )
-        self.page_dashboard.resume_now_requested.connect(self.queue_resume)
-        self.page_dashboard.pause_requested.connect(self.toggle_pause)
+        self.page_dashboard.resume_now_requested.connect(self.refresh_recovery)
+        self.page_dashboard.stop_requested.connect(self.stop_execution)
+        self.page_dashboard.history_requested.connect(self.show_recovery_history)
         self.page_settings.settings_changed.connect(self._save_settings)
         self.page_quota.task_requested.connect(self._save_task)
         self.page_tasks.add_requested.connect(
@@ -135,11 +140,7 @@ class MainWindow(QMainWindow):
         self.page_tasks.chk_auto.blockSignals(True)
         self.page_tasks.chk_auto.setChecked(self.settings["queue_enabled"])
         self.page_tasks.chk_auto.blockSignals(False)
-        self.page_dashboard.btn_pause.setText(
-            tr("暂停自动执行", "Pause execution")
-            if self.settings["queue_enabled"]
-            else tr("继续自动执行", "Resume execution")
-        )
+        self._refresh_recovery()
 
     def _save_settings(self, updates, reload=True):
         try:
@@ -150,6 +151,8 @@ class MainWindow(QMainWindow):
             if "sessions_dir" in updates:
                 self.snapshot = {}  # Never execute from a previous data source.
             self.monitor_worker.refresh()
+            if updates.get("auto_resume") is False and self.executor and self.executor.task.kind == "auto_resume":
+                self.executor.stop()
             if reload:
                 self._load_settings()
             self.page_dashboard.lbl_status.setText(tr("设置已保存", "Settings saved"))
@@ -208,42 +211,32 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             self._error(str(exc))
 
-    def queue_resume(self):
-        session_id = self.page_dashboard.cmb_session.currentData()
-        session = next(
-            (
-                s
-                for s in self.snapshot.get("sessions", [])
-                if s["session_id"] == session_id
-            ),
-            None,
-        )
-        if not session:
-            return
-        if any(
-            t.session_id == session_id and t.status in ("pending", "waiting", "running")
-            for t in self.scheduler.task_queue
-        ):
-            self._error(
-                tr("该对话已在执行队列中", "This conversation is already queued")
-            )
-            return
-        self._save_task(
-            dict(
-                name=tr("手动恢复", "Manual resume"),
-                prompt=self.page_dashboard.txt_prompt.toPlainText()
-                or t("default_resume_prompt"),
-                cwd=session["cwd"],
-                model=session["model"],
-                session_id=session_id,
-                kind="task",
-                scheduled_at=time.time(),
-                sandbox="workspace-write"
-                if self.page_dashboard.chk_resume_write.isChecked()
-                else "read-only",
-            )
-        )
-        self.switch_page(2)
+    def refresh_recovery(self):
+        self.monitor_worker.refresh()
+
+    def toggle_recovery(self):
+        self._save_settings({"auto_resume": not self.settings["auto_resume"]})
+
+    def show_recovery_history(self):
+        if self.recovery_dialog is None:
+            self.recovery_dialog = QDialog(self)
+            self.recovery_dialog.setWindowTitle(tr("自动恢复记录", "Automatic recovery history"))
+            self.recovery_dialog.resize(1000, 650)
+            layout = QVBoxLayout(self.recovery_dialog)
+            self.recovery_history = TaskQueuePage(read_only=True)
+            layout.addWidget(self.recovery_history)
+        self._refresh_recovery()
+        self.recovery_dialog.show()
+        self.recovery_dialog.raise_()
+
+    def _refresh_recovery(self):
+        self.monitor_worker.recovery_session_id = self.recovery.target["session_id"] if self.recovery.target else ""
+        self.page_dashboard.render_recovery(self.recovery.target, self.settings)
+        if self.recovery_dialog is not None:
+            tasks = self.recovery.history_tasks()
+            if self.executor and self.executor.task.kind == "auto_resume" and self.executor.task.status == "running":
+                tasks.append(self.executor.task)
+            self.recovery_history.refresh_table(tasks)
 
     def _edit_task(self, task_id):
         task = self.scheduler.get(task_id)
@@ -288,68 +281,67 @@ class MainWindow(QMainWindow):
         now = time.time()
         if self.tray and self.executor is None:
             self._update_tray_state(now)
-        if (
-            self.executor is not None
-            or not self.snapshot
-            or not self.snapshot.get("available", True)
-        ):
-            return
-        if now - self.snapshot.get("scanned_at", 0) > max(
-            30, self.settings["poll_interval"] * 3
-        ):
+        if (not self.snapshot or not self.snapshot.get("available", True)
+                or now - self.snapshot.get("scanned_at", 0) > max(30, self.settings["poll_interval"] * 3)):
+            self._refresh_recovery()
             return
         try:
-            self.scheduler.sync_auto_resume(self.snapshot, self.settings, now)
-            task = self.scheduler.due_task(self.snapshot, self.settings, now)
+            self.recovery.observe(self.snapshot, now)
+            self._refresh_recovery()
+            if self.executor is not None:
+                return
+            # Recovery has its own switch and no missed-schedule grace period.
+            task = self.recovery.due_task(self.settings, now)
+            task = task or self.scheduler.due_task(self.snapshot, self.settings, now)
             if task:
-                if self.dry_run:
-                    self.scheduler.update(
-                        task,
-                        status="simulated",
-                        completed_at=now,
-                        last_error=tr(
-                            "模拟完成：没有调用 Codex", "Dry run: Codex was not invoked"
-                        ),
-                    )
-                else:
-                    log_path = (
-                        self.manager.config_dir / "logs" / f"{task.id}-{int(now)}.log"
-                    )
-                    self.scheduler.update(
-                        task,
-                        status="running",
-                        started_at=now,
-                        log_file=str(log_path),
-                        last_error="",
-                    )
-                    worker = self.executor_factory(
-                        task,
-                        log_path,
-                        binary=self.settings["cli_path"],
-                        parent=self,
-                        take_over_desktop=self.settings["take_over_desktop"],
-                    )
-                    self.executor = worker
-                    self._execution_error = False
-                    worker.completed.connect(self._execution_completed)
-                    worker.output_line.connect(lambda _: self.page_tasks.show_detail())
-                    worker.progress.connect(self._execution_progress)
-                    worker.finished.connect(self._execution_finished)
-                    worker.start()
-                    self.page_dashboard.lbl_status.setText(
-                        tr("正在执行：", "Running: ") + task.name
-                    )
-                    if self.tray:
-                        self.tray.set_state("resuming")
+                try:
+                    self._dispatch(task, now)
+                except Exception as exc:
+                    if self.executor is not None and not self.executor.isRunning():
+                        self.executor.deleteLater()
+                        self.executor = None
+                    if self.executor is None and task.status == "running":
+                        if task.kind == "auto_resume" and self.recovery.target["status"] == "running":
+                            self.recovery.complete(task, {"code": 1, "error": str(exc)}, now)
+                        elif task.kind != "auto_resume":
+                            self.scheduler.update(task, status="failed", completed_at=now, last_error=str(exc))
+                    raise
             self._refresh_queue()
+            self._refresh_recovery()
         except Exception as exc:
-            # A persistence error must never become an unrecorded execution.
+            # Never execute if recording the run or its completion failed.
             self._execution_error = True
-            self.settings["queue_enabled"] = False
+            self.settings.update(queue_enabled=False, auto_resume=False)
             self._load_settings()
-            self.statusBar().showMessage(
-                tr("执行已暂停：", "Execution paused: ") + str(exc)
-            )
+            self.statusBar().showMessage(tr("执行已暂停：", "Execution paused: ") + str(exc))
+
+    def _dispatch(self, task, now):
+        automatic = task.kind == "auto_resume"
+        log_path = self.manager.config_dir / "logs" / f"{task.id}-{int(now)}.log"
+        if automatic:
+            self.recovery.start(task, log_path, now)
+        else:
+            self.scheduler.update(task, status="running", started_at=now,
+                                  log_file=str(log_path), last_error="")
+        if self.dry_run:
+            message = tr("模拟完成：没有调用 Codex", "Dry run: Codex was not invoked")
+            if automatic:
+                self.recovery.complete(task, {"code": 0, "error": message, "simulated": True}, now)
+            else:
+                self.scheduler.update(task, status="simulated", completed_at=now, last_error=message)
+            return
+        worker = self.executor_factory(task, log_path, binary=self.settings["cli_path"],
+                                       parent=self, take_over_desktop=self.settings["take_over_desktop"])
+        self.executor = worker
+        self._execution_error = False
+        worker.completed.connect(self._execution_completed)
+        worker.output_line.connect(lambda _: self._refresh_recovery() if automatic else self.page_tasks.show_detail())
+        worker.progress.connect(self._execution_progress)
+        worker.finished.connect(self._execution_finished)
+        worker.start()
+        self.page_dashboard.lbl_status.setText(tr("正在执行：", "Running: ") + task.name)
+        if self.tray:
+            self.tray.set_state("resuming")
 
     def _update_tray_state(self, now):
         if self._execution_error:
@@ -398,10 +390,12 @@ class MainWindow(QMainWindow):
         )
         try:
             if not result.get("cleanup_ok", True):
-                self.manager.save({"queue_enabled": False})
-                self.settings["queue_enabled"] = False
+                self.manager.save({"queue_enabled": False, "auto_resume": False})
+                self.settings.update(queue_enabled=False, auto_resume=False)
                 self._load_settings()
-            if code == 75:
+            if task.kind == "auto_resume":
+                self.recovery.complete(task, result, time.time())
+            elif code == 75:
                 self.scheduler.update(
                     task,
                     status="waiting",
@@ -437,10 +431,11 @@ class MainWindow(QMainWindow):
             if self.settings["play_sound"] and code != 75:
                 QApplication.beep()
             self._refresh_queue()
+            self._refresh_recovery()
             self.monitor_worker.refresh()
         except Exception as exc:
             self._execution_error = True
-            self.settings["queue_enabled"] = False
+            self.settings.update(queue_enabled=False, auto_resume=False)
             self.statusBar().showMessage(str(exc))
 
     def _execution_finished(self):

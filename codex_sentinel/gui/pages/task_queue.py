@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from codex_sentinel.gui.common import status_text, time_text, tr
+from codex_sentinel.gui.common import permission_text, status_text, time_text, tr
 
 
 class TaskQueuePage(QWidget):
@@ -28,7 +28,7 @@ class TaskQueuePage(QWidget):
     stop_requested = Signal()
     enabled_changed = Signal(bool)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, read_only=False):
         super().__init__(parent)
         self.tasks = []
         self.session_titles = {}
@@ -42,6 +42,7 @@ class TaskQueuePage(QWidget):
         )
         self.chk_auto.toggled.connect(self.enabled_changed)
         layout.addWidget(self.chk_auto)
+        self.chk_auto.setVisible(not read_only)
         self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(
             [
@@ -87,6 +88,9 @@ class TaskQueuePage(QWidget):
         stop.clicked.connect(self.stop_requested)
         row.addWidget(stop)
         layout.addLayout(row)
+        if read_only:
+            for index in range(row.count()):
+                row.itemAt(index).widget().hide()
         self.detail = QPlainTextEdit()
         self.detail.setReadOnly(True)
         # The log read is already bounded. A block cap would silently discard
@@ -164,6 +168,7 @@ class TaskQueuePage(QWidget):
             f"{tr('目标会话 ID', 'Target thread ID')}: {task.session_id or '—'}\n"
             f"{tr('模型', 'Model')}: {task.model or tr('默认', 'Default')}\n"
             f"{tr('工作目录', 'Directory')}: {task.cwd}\n"
+            f"{tr('执行权限', 'Execution permissions')}: {permission_text(task.sandbox)}\n"
             f"{tr('发送语句', 'Prompt')}: {task.prompt}\n{error_part}\n"
         )
         if task.log_file:

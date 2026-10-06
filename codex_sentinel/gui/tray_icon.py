@@ -18,10 +18,10 @@ class SentinelTrayIcon(QSystemTrayIcon):
         for label, signal in (
             (tr("打开仪表盘", "Open dashboard"), self.show_dashboard_requested),
             (
-                tr("恢复所选对话", "Queue selected conversation"),
+                tr("检查最新限额中断", "Check latest quota interruption"),
                 self.resume_now_requested,
             ),
-            (tr("暂停 / 继续执行", "Pause / resume execution"), self.pause_requested),
+            (tr("暂停 / 继续自动恢复", "Pause / resume automatic recovery"), self.pause_requested),
             (tr("设置", "Settings"), self.settings_requested),
             (tr("退出 Sentinel", "Quit Sentinel"), self.quit_requested),
         ):

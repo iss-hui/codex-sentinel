@@ -34,6 +34,55 @@ def test_command_preserves_explicit_session_model_and_sandbox(tmp_path):
     assert task.prompt not in cmd
 
 
+@pytest.mark.parametrize("session_id", ["", "chosen-thread"])
+def test_writable_command_uses_exec_auto_review_preset(tmp_path, session_id):
+    task = QuotaScheduler(tmp_path).add_task(
+        "resume", "continue and commit", str(tmp_path), "selected-model",
+        session_id=session_id, sandbox="workspace-write",
+    )
+    command = build_command(task, "codex.exe")
+    assert command[:5] == ["codex.exe", "exec", "--sandbox", "workspace-write", "--approve-for-me"]
+    assert "never" not in command
+    assert not any("danger" in arg for arg in command)
+    assert ("resume" in command) == bool(session_id)
+    assert command[-1] == "-"
+    assert command[command.index("--model") + 1] == "selected-model"
+    if session_id:
+        assert command[-2] == session_id
+
+
+def test_invalid_persisted_permissions_are_not_executed(tmp_path):
+    task = QuotaScheduler(tmp_path).add_task("test", "hello", str(tmp_path))
+    task.sandbox = "danger-full-access"
+    with pytest.raises(ValueError, match="Unsupported task sandbox"):
+        build_command(task, "codex")
+
+
+def test_unsupported_auto_review_fails_before_desktop_handoff(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    task = QuotaScheduler(tmp_path).add_task(
+        "test", "hello", str(tmp_path), session_id="busy", sandbox="workspace-write"
+    )
+    monkeypatch.setattr("codex_sentinel.execution.is_thread_locked", lambda _: True)
+    probes = []
+
+    def help_command(command, **kwargs):
+        probes.append(command)
+        return SimpleNamespace(returncode=0, stdout="exec --sandbox")
+
+    monkeypatch.setattr("codex_sentinel.execution.subprocess.run", help_command)
+    monkeypatch.setattr("codex_sentinel.execution.DesktopHandoff.close",
+                        lambda _: pytest.fail("must not close desktop"))
+    monkeypatch.setattr("codex_sentinel.execution.OwnedProcess.start",
+                        lambda *args, **kwargs: pytest.fail("must not start task"))
+    result = execute_task(task, tmp_path / "run.log", binary="older-codex", take_over_desktop=True)
+    assert probes == [["older-codex", "exec", "--help"]]
+    assert result["code"] != 0
+    assert "--approve-for-me" in result["error"]
+    assert "Update Codex" in result["error"]
+
+
 def fake_program(tmp_path, monkeypatch, code):
     path = tmp_path / "fake_cli.py"
     path.write_text(code, encoding="utf-8")
@@ -56,7 +105,33 @@ def test_actual_child_stdin_logs_and_completion(tmp_path, monkeypatch):
     assert result["session_id"] == "new-thread"
     import json
 
-    assert json.loads(log.read_text().splitlines()[1])["prompt"] == task.prompt
+    events = [json.loads(line) for line in log.read_text().splitlines()]
+    assert next(e for e in events if "prompt" in e)["prompt"] == task.prompt
+    permissions = next(e for e in events if e.get("type") == "sentinel.execution")
+    assert permissions["sandbox"] == "read-only"
+    assert permissions["approval_policy"] == "never"
+
+
+def test_writable_execution_logs_requested_auto_review(tmp_path, monkeypatch):
+    import json
+
+    task = QuotaScheduler(tmp_path).add_task(
+        "write", "continue", str(tmp_path), session_id="chosen-thread", sandbox="workspace-write"
+    )
+    fake_program(tmp_path, monkeypatch,
+                 'import sys\nsys.stdin.read()\nprint(\'{"type":"turn.completed"}\')\n')
+    checked = []
+    monkeypatch.setattr("codex_sentinel.execution.require_auto_review", checked.append)
+    log = tmp_path / "run.log"
+    result = execute_task(task, log, binary="fake")
+    assert checked == [sys.executable]
+    assert result["code"] == 0
+    request = json.loads(log.read_text().splitlines()[0])
+    assert request == {
+        "type": "sentinel.execution", "session_id": "chosen-thread",
+        "sandbox": "workspace-write", "approval_policy": "on-request",
+        "approvals_reviewer": "auto_review",
+    }
 
 
 def test_zero_exit_without_completed_event_is_not_success(tmp_path, monkeypatch):

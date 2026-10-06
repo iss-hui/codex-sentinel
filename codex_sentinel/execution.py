@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import threading
 import time
@@ -15,7 +16,14 @@ from codex_sentinel.resume import find_codex_binary
 
 
 def build_command(task, binary):
-    command = [binary, "-a", "never", "exec", "--sandbox", task.sandbox]
+    if task.sandbox == "workspace-write":
+        # The exec-specific preset enables on-request + auto_review together.
+        # Passing only -a at the root CLI is not sufficient for all exec versions.
+        command = [binary, "exec", "--sandbox", "workspace-write", "--approve-for-me"]
+    elif task.sandbox == "read-only":
+        command = [binary, "-a", "never", "exec", "--sandbox", "read-only"]
+    else:
+        raise ValueError(f"Unsupported task sandbox: {task.sandbox}")
     if task.session_id:
         command.append("resume")
     command.extend(["--json", "--skip-git-repo-check"])
@@ -25,6 +33,21 @@ def build_command(task, binary):
         command.append(task.session_id)
     command.append("-")  # Preserve prompt quotes/newlines through stdin.
     return command
+
+
+def require_auto_review(binary):
+    """Check the local CLI before closing the desktop; never downgrade permissions."""
+    result = subprocess.run(
+        [binary, "exec", "--help"],
+        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        encoding="utf-8", errors="replace", timeout=5,
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+    )
+    if result.returncode or "--approve-for-me" not in result.stdout:
+        raise RuntimeError(
+            "This Codex CLI does not support exec --approve-for-me. "
+            "Update Codex or choose a newer CLI in Settings. No task was started."
+        )
 
 
 class TurnEvents:
@@ -90,8 +113,18 @@ def execute_task(
     try:
         # Resolve the CLI and prepare its log before interrupting the desktop.
         command = build_command(task, binary or find_codex_binary())
+        if task.sandbox == "workspace-write":
+            require_auto_review(command[0])
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("wb") as log:
+            log.write((json.dumps({
+                "type": "sentinel.execution",
+                "session_id": task.session_id,
+                "sandbox": task.sandbox,
+                "approval_policy": "on-request" if task.sandbox == "workspace-write" else "never",
+                "approvals_reviewer": "auto_review" if task.sandbox == "workspace-write" else None,
+            }) + "\n").encode("utf-8"))
+            log.flush()
             if task.session_id and is_thread_locked(task.session_id):
                 if not take_over_desktop:
                     result.update(

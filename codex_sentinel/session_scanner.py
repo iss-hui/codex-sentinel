@@ -11,7 +11,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from codex_sentinel.session_catalog import read_session_catalog
+from codex_sentinel.session_catalog import normalized_path, read_session_catalog
 
 
 def get_codex_dir() -> Path:
@@ -74,6 +74,7 @@ class SessionScanner:
                 "limits": {},
                 "limits_at": 0.0,
                 "limited_at": 0.0,
+                "status_at": 0.0,
                 "tokens_used": None,
                 "file_path": str(path),
             }
@@ -130,8 +131,13 @@ class SessionScanner:
                 if usage.get("total_tokens") is not None:
                     s["tokens_used"] = usage["total_tokens"]
             elif event in ("task_started", "user_message"):
-                s.update(task_status="running", error_msg="")
+                s.update(task_status="running", error_msg="", status_at=at)
             elif event in ("task_complete", "task_failed", "error", "turn_aborted"):
+                if event == "task_complete" and not payload.get("error") and s["task_status"] == "rate_limited":
+                    # Some CLI versions emit completion after the quota error.
+                    # Keep the interruption until a new turn actually begins.
+                    return
+                s["status_at"] = at
                 error = payload.get("error")
                 if event == "error":
                     error = payload
@@ -149,7 +155,7 @@ class SessionScanner:
                     else str(error or "")
                 )
 
-    def scan(self, limit=100) -> dict:
+    def scan(self, limit=100, watch_session_id="") -> dict:
         warnings = []
         paths = []
         if not self.sessions_dir.exists():
@@ -161,16 +167,26 @@ class SessionScanner:
                 except OSError:
                     continue
         paths.sort(key=lambda pair: pair[0], reverse=True)
+        catalog = read_session_catalog(self.codex_dir, [], warnings)
+        visible = {normalized_path(s["file_path"]) for s in catalog if s.get("file_path")}
+        watched = {normalized_path(s["file_path"]) for s in catalog
+                   if s["session_id"] == watch_session_id and s.get("file_path")}
+        # Internal review logs must not crowd out the latest user interruption.
+        # Keep the active target under observation even after its log gets old.
+        selected_paths = dict.fromkeys(
+            [p for _, p in paths[:limit]]
+            + [p for _, p in paths if normalized_path(p) in visible][:limit]
+            + [p for _, p in paths if normalized_path(p) in watched]
+        )
         sessions = []
-        for _, path in paths[:limit]:
+        for path in selected_paths:
             try:
                 s = self._read(path)
                 if s["session_id"]:
                     sessions.append(s)
             except OSError as exc:
                 warnings.append(str(exc))
-        selected = {p for _, p in paths[:limit]}
-        self._cache = {p: v for p, v in self._cache.items() if p in selected}
+        self._cache = {p: v for p, v in self._cache.items() if p in selected_paths}
         buckets = {}
         for session in sessions:
             limits = session["limits"]
@@ -183,8 +199,6 @@ class SessionScanner:
                         "source": session["file_path"],
                     }
         return {
-            # Quota observation keeps its recent-log budget; the picker uses the
-            # full metadata index so internal logs cannot crowd out older chats.
             "sessions": read_session_catalog(self.codex_dir, sessions, warnings),
             "buckets": buckets,
             "warnings": warnings,

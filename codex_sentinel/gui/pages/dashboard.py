@@ -1,6 +1,7 @@
 import time
+from pathlib import Path
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -15,14 +16,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from codex_sentinel.gui.common import populate_sessions, time_text, tr
+from codex_sentinel.gui.common import status_text, time_text, tr
 from codex_sentinel.gui.widgets.countdown_ring import CountdownRing
 from codex_sentinel.i18n import t
 
 
 class DashboardPage(QWidget):
     resume_now_requested = Signal()
-    pause_requested = Signal()
+    stop_requested = Signal()
+    history_requested = Signal()
     settings_changed = Signal(dict)
 
     def __init__(self, parent=None):
@@ -63,22 +65,18 @@ class DashboardPage(QWidget):
         self.lbl_note.setWordWrap(True)
         layout.addWidget(self.lbl_note)
         form = QFormLayout()
-        self.cmb_session = QComboBox()
-        form.addRow(tr("恢复对话", "Conversation to resume"), self.cmb_session)
-        self.chk_auto_resume = QCheckBox(
-            tr(
-                "限额到期后自动恢复被中断的对话",
-                "Auto-resume conversations interrupted by quota",
-            )
-        )
+        self.chk_auto_resume = QCheckBox(tr(
+            "自动恢复最新的限额中断聊天（独立监控，不加入队列）",
+            "Automatically recover the latest quota-interrupted chat (independent of queue)",
+        ))
         form.addRow(self.chk_auto_resume)
-        self.chk_resume_write = QCheckBox(
-            tr(
-                "允许恢复任务修改工作目录中的文件",
-                "Allow resumed tasks to edit workspace files",
-            )
-        )
-        form.addRow(self.chk_resume_write)
+        permissions = QLabel(tr("恢复权限：工作区可读写＋自动审批", "Recovery permissions: workspace write + automatic approval reviews"))
+        permissions.setWordWrap(True)
+        form.addRow(permissions)
+        self.lbl_recovery = QLabel()
+        self.lbl_recovery.setWordWrap(True)
+        self.lbl_recovery.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        form.addRow(self.lbl_recovery)
         row = QHBoxLayout()
         self.spin_buffer = QSpinBox()
         self.spin_buffer.setRange(0, 600)
@@ -101,11 +99,13 @@ class DashboardPage(QWidget):
         self.btn_save.clicked.connect(
             lambda: self.settings_changed.emit(self.get_settings())
         )
-        self.btn_resume = QPushButton(tr("加入恢复队列", "Queue resume"))
+        self.btn_resume = QPushButton(tr("刷新检测", "Refresh detection"))
         self.btn_resume.clicked.connect(self.resume_now_requested)
-        self.btn_pause = QPushButton(tr("暂停自动执行", "Pause execution"))
-        self.btn_pause.clicked.connect(self.pause_requested)
-        for button in (self.btn_save, self.btn_resume, self.btn_pause):
+        self.btn_stop = QPushButton(tr("停止本次恢复", "Stop current recovery"))
+        self.btn_stop.clicked.connect(self.stop_requested)
+        self.btn_history = QPushButton(tr("恢复记录与日志", "Recovery history and logs"))
+        self.btn_history.clicked.connect(self.history_requested)
+        for button in (self.btn_save, self.btn_resume, self.btn_stop, self.btn_history):
             buttons.addWidget(button)
         layout.addLayout(buttons)
         self.lbl_status = QLabel()
@@ -115,7 +115,6 @@ class DashboardPage(QWidget):
 
     def load_settings(self, config):
         self.chk_auto_resume.setChecked(config["auto_resume"])
-        self.chk_resume_write.setChecked(config["resume_sandbox"] == "workspace-write")
         self.spin_buffer.setValue(config["buffer_seconds"])
         self.txt_prompt.setPlainText(
             config["resume_prompt"] or t("default_resume_prompt")
@@ -126,9 +125,6 @@ class DashboardPage(QWidget):
             "auto_resume": self.chk_auto_resume.isChecked(),
             "buffer_seconds": self.spin_buffer.value(),
             "resume_prompt": self.txt_prompt.toPlainText(),
-            "resume_sandbox": "workspace-write"
-            if self.chk_resume_write.isChecked()
-            else "read-only",
         }
 
     def on_snapshot(self, snapshot):
@@ -142,9 +138,33 @@ class DashboardPage(QWidget):
         if index >= 0:
             self.cmb_bucket.setCurrentIndex(index)
         self.cmb_bucket.blockSignals(False)
-        populate_sessions(self.cmb_session, snapshot["sessions"], new_session=False)
-        self.btn_resume.setEnabled(bool(snapshot["sessions"]))
         self.render_limits()
+
+    def render_recovery(self, target, settings):
+        active = settings["auto_resume"]
+        if not target:
+            self.lbl_recovery.setText(tr("等待新的限额中断聊天", "Waiting for a new quota interruption")
+                                     if active else tr("自动恢复已关闭", "Automatic recovery is off"))
+            self.btn_stop.setEnabled(False)
+            return
+        name = " › ".join(part for part in (target.get("project"), target.get("title")) if part)
+        status = status_text(target["status"]) if active else tr("自动恢复已关闭", "Automatic recovery is off")
+        if active and not target.get("available"):
+            status = tr("等待目标聊天的本地记录", "Waiting for the target's local record")
+        elif active and (not target.get("cwd") or not Path(target["cwd"]).is_dir()):
+            status = tr("目标工作目录不可用", "Target working directory unavailable")
+        reset = target.get("reset_at")
+        due = max(reset + settings["buffer_seconds"], target.get("not_before", 0)) if reset is not None else None
+        remaining = max(0, int(due - time.time())) if due is not None else None
+        countdown = f"{remaining // 3600:02}:{remaining // 60 % 60:02}:{remaining % 60:02}" if remaining is not None else "—"
+        self.lbl_recovery.setText(
+            f"{tr('恢复目标', 'Recovery target')}: {name}\n"
+            f"{tr('状态', 'Status')}: {status}\n"
+            f"{tr('最早恢复（含缓冲）', 'Earliest recovery (with buffer)')}: {time_text(due)} · {countdown}\n"
+            f"{tr('下次本地重置记录', 'Next locally recorded reset')}: {time_text(target.get('next_reset_at'))}"
+        )
+        self.lbl_recovery.setToolTip(f"ID: {target['session_id']}\n{target.get('error', '')}")
+        self.btn_stop.setEnabled(target["status"] == "running")
 
     def render_limits(self, *args):
         now = time.time()

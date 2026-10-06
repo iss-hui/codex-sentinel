@@ -91,6 +91,37 @@ def test_resumed_turn_invalidates_old_interruption(tmp_path):
     assert scanner.scan()["sessions"][0]["task_status"] == "completed"
 
 
+def test_completion_after_quota_error_keeps_interruption(tmp_path):
+    path = tmp_path / "rate.jsonl"
+    append(path, {"type": "session_meta", "payload": {"id": "s1"}},
+           event("error", message="usage limit reached"), event("task_complete"))
+    scanner = SessionScanner(tmp_path, tmp_path)
+    assert scanner.scan()["sessions"][0]["task_status"] == "rate_limited"
+    append(path, event("turn_aborted"))
+    assert scanner.scan()["sessions"][0]["task_status"] == "interrupted"
+
+
+def test_review_logs_do_not_crowd_out_latest_user_or_watched_target(tmp_path):
+    import os
+
+    old = tmp_path / "old.jsonl"
+    recent = tmp_path / "recent.jsonl"
+    hidden = tmp_path / "hidden.jsonl"
+    for path, sid, source in ((old, "old", "cli"), (recent, "recent", "cli"), (hidden, "hidden", "subagent")):
+        append(path, {"type": "session_meta", "payload": {"id": sid, "source": source}},
+               event("error", message="usage limit reached"))
+    for value, path in enumerate((old, recent, hidden), start=1000):
+        os.utime(path, (value, value))
+    with sqlite3.connect(tmp_path / "state_5.sqlite") as conn:
+        conn.execute("CREATE TABLE threads (id TEXT, source TEXT, rollout_path TEXT)")
+        conn.executemany("INSERT INTO threads VALUES (?,?,?)", [
+            ("old", "cli", str(old)), ("recent", "cli", str(recent)), ("hidden", "subagent", str(hidden)),
+        ])
+    result = SessionScanner(tmp_path, tmp_path).scan(limit=1, watch_session_id="old")
+    states = {s["session_id"]: s["task_status"] for s in result["sessions"]}
+    assert states == {"old": "rate_limited", "recent": "rate_limited"}
+
+
 def test_weekly_limit_is_respected():
     limits = {
         "primary": {"used_percent": 100, "resets_at": 200},

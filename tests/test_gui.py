@@ -87,6 +87,98 @@ def test_pages_settings_and_schedule_persist(window, tmp_path):
     assert task.status == "cancelled"
 
 
+def test_recovery_is_independent_of_queue_and_always_writable(window, tmp_path, monkeypatch):
+    window.dry_run = True
+    now = time.time()
+    data = snapshot(tmp_path)
+    data["sessions"][0].update(task_status="rate_limited", limited_at=now - 100,
+        limits={"limit_id": "codex", "primary": {"used_percent": 100, "resets_at": now - 40}})
+    data["buckets"] = {}
+    window._on_snapshot(data)
+    window._save_settings({"auto_resume": True, "queue_enabled": False})
+    manual = window.scheduler.add_task("manual", "hello", str(tmp_path), scheduled_at=now - 40)
+    window._tick()
+    assert window.scheduler.task_queue == [manual]
+    assert manual.status == "pending" and manual.sandbox == "read-only"
+    history = window.recovery.history_tasks()
+    assert len(history) == 1 and history[0].status == "simulated"
+    assert history[0].sandbox == "workspace-write"
+    window._tick()
+    assert len(window.recovery.history_tasks()) == 1
+    assert "测试对话" in window.page_dashboard.lbl_recovery.text()
+
+
+def test_recovery_priority_and_manual_permissions_are_separate(window, tmp_path):
+    window.dry_run = True
+    now = time.time()
+    data = snapshot(tmp_path)
+    data["sessions"][0].update(task_status="rate_limited", limited_at=now - 100,
+        limits={"primary": {"used_percent": 100, "resets_at": now - 40}})
+    data["buckets"] = {}
+    window._on_snapshot(data)
+    window._save_settings({"auto_resume": True})
+    manual = window.scheduler.add_task("manual", "hello", str(tmp_path), scheduled_at=now - 40)
+    window._tick()
+    assert manual.status == "pending"
+    assert window.recovery.target["status"] == "simulated"
+    window._tick()
+    assert manual.status == "simulated" and manual.sandbox == "read-only"
+
+
+def test_disabling_recovery_does_not_pause_manual_queue(window, tmp_path):
+    window.dry_run = True
+    window._on_snapshot(snapshot(tmp_path))
+    window._save_settings({"auto_resume": False})
+    task = window.scheduler.add_task("manual", "hello", str(tmp_path), scheduled_at=time.time() - 40)
+    window._tick()
+    assert task.status == "simulated"
+    assert window.settings["queue_enabled"]
+
+
+def test_worker_recovers_latest_chat_without_adding_to_queue(app, window, tmp_path, monkeypatch):
+    calls = []
+    def execute(task, log_path, **kwargs):
+        calls.append((task.session_id, task.sandbox))
+        return {"code": 0, "error": "", "session_id": task.session_id}
+    monkeypatch.setattr("codex_sentinel.gui.workers.execute_task", execute)
+    now = time.time()
+    data = snapshot(tmp_path)
+    data["sessions"][0].update(task_status="rate_limited", limited_at=now - 100,
+        limits={"primary": {"used_percent": 100, "resets_at": now - 40}})
+    data["buckets"] = {}
+    window._on_snapshot(data)
+    window._save_settings({"auto_resume": True, "queue_enabled": False})
+    window._tick()
+    deadline = time.monotonic() + 5
+    while window.executor is not None and time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.01)
+    assert window.executor is None
+    assert calls == [("test-session", "workspace-write")]
+    assert window.scheduler.task_queue == []
+    assert window.recovery.history_tasks()[0].status == "completed"
+    window._on_snapshot(data)
+    window._tick()
+    assert len(calls) == 1
+
+
+def test_recovery_worker_start_failure_does_not_remain_running(window, tmp_path, monkeypatch):
+    now = time.time()
+    data = snapshot(tmp_path)
+    data["sessions"][0].update(task_status="rate_limited", limited_at=now - 100,
+        limits={"primary": {"used_percent": 100, "resets_at": now - 40}})
+    data["buckets"] = {}
+    window._on_snapshot(data)
+    window._save_settings({"auto_resume": True})
+    def fail(*args, **kwargs):
+        raise RuntimeError("could not create worker")
+    monkeypatch.setattr(window, "executor_factory", fail)
+    window._tick()
+    assert window.executor is None
+    assert window.recovery.target["status"] == "failed"
+    assert not window.settings["auto_resume"]
+
+
 def test_no_execution_without_fresh_snapshot(window, tmp_path, monkeypatch):
     task = window.scheduler.add_task(
         "test", "hello", str(tmp_path), scheduled_at=time.time() - 31
@@ -248,11 +340,11 @@ def test_picker_groups_folders_but_selects_thread_ids(window, tmp_path):
         {**data["sessions"][0], "session_id": "second", "title": "另一对话"}
     )
     window._on_snapshot(data)
-    combo = window.page_dashboard.cmb_session
-    assert combo.itemText(0) == "项目名称"
-    assert not combo.model().item(0).flags() & Qt.ItemFlag.ItemIsSelectable
-    assert combo.itemText(1).strip() == "测试对话"
-    assert combo.currentData() == "test-session"
+    combo = window.page_quota.cmb_session
+    assert combo.itemText(1) == "项目名称"
+    assert not combo.model().item(1).flags() & Qt.ItemFlag.ItemIsSelectable
+    assert combo.itemText(2).strip() == "测试对话"
+    assert combo.itemData(2) == "test-session"
     combo.setCurrentIndex(combo.findData("second"))
     window._on_snapshot(data)
     assert combo.currentData() == "second"
