@@ -3,6 +3,7 @@ from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 from codex_sentinel.gui.common import tr
+from codex_sentinel.gui.icons import application_icon
 
 
 class SentinelTrayIcon(QSystemTrayIcon):
@@ -14,6 +15,7 @@ class SentinelTrayIcon(QSystemTrayIcon):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._logo = application_icon()
         self.menu = QMenu(parent)
         for label, signal in (
             (tr("打开仪表盘", "Open dashboard"), self.show_dashboard_requested),
@@ -61,9 +63,12 @@ class SentinelTrayIcon(QSystemTrayIcon):
         pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setBrush(QColor(colors.get(state, "#10b981")))
+        painter.drawPixmap(0, 0, self._logo.pixmap(32, 32))
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(4, 4, 24, 24)
+        painter.setBrush(QColor("#1e1e2e"))
+        painter.drawEllipse(20, 20, 12, 12)
+        painter.setBrush(QColor(colors.get(state, "#10b981")))
+        painter.drawEllipse(22, 22, 8, 8)
         painter.end()
         self.setIcon(QIcon(pixmap))
         self.setToolTip(f"Codex Sentinel · {labels.get(state, state)}")

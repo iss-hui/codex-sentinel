@@ -1,3 +1,5 @@
+<img src="codex_sentinel/gui/assets/logo.png" width="96" height="96" alt="Codex Sentinel logo">
+
 # Codex Sentinel 2.0
 
 A local-first desktop quota dashboard, scheduled turn launcher, and conversation resumer for Codex.

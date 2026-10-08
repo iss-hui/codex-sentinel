@@ -74,7 +74,7 @@ jobs:
 
       - name: Compile Windows EXE
         run: |
-          pyinstaller --clean --noconfirm --onefile --name "codex-sentinel-windows-x64-${env:RELEASE_TAG}" --windowed run_sentinel.py
+          pyinstaller --clean --noconfirm --onefile --name "codex-sentinel-windows-x64-${env:RELEASE_TAG}" --windowed --icon codex_sentinel/gui/assets/logo.ico --collect-data codex_sentinel run_sentinel.py
           python scripts/build_windows.py
           Move-Item -LiteralPath "dist/CodexSentinel-windows-x64.zip" -Destination "dist/CodexSentinel-windows-x64-${env:RELEASE_TAG}.zip"
 
@@ -105,7 +105,7 @@ jobs:
 
       - name: Compile Linux Binary
         run: |
-          pyinstaller --clean --noconfirm --onefile --name "codex-sentinel-linux-x64-${RELEASE_TAG}" run_sentinel.py
+          pyinstaller --clean --noconfirm --onefile --name "codex-sentinel-linux-x64-${RELEASE_TAG}" --collect-data codex_sentinel run_sentinel.py
           chmod +x "dist/codex-sentinel-linux-x64-${RELEASE_TAG}"
 
       - name: Upload Linux Binary
@@ -133,7 +133,7 @@ jobs:
 
       - name: Compile macOS Binary
         run: |
-          pyinstaller --clean --noconfirm --onefile --name "codex-sentinel-macos-${RELEASE_TAG}" run_sentinel.py
+          pyinstaller --clean --noconfirm --onefile --name "codex-sentinel-macos-${RELEASE_TAG}" --collect-data codex_sentinel run_sentinel.py
           chmod +x "dist/codex-sentinel-macos-${RELEASE_TAG}"
 
       - name: Upload macOS Binary

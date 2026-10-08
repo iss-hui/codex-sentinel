@@ -35,7 +35,8 @@ def main():
     ) if p.is_dir())
     subprocess.run(
         [sys.executable, "-m", "PyInstaller", "--noconfirm", "--onedir", "--windowed",
-         "--name", "CodexSentinel", "--distpath", destination, "--workpath", work,
+         "--name", "CodexSentinel", "--icon", str(root / "codex_sentinel/gui/assets/logo.ico"),
+         "--collect-data", "codex_sentinel", "--distpath", destination, "--workpath", work,
          "--specpath", "build", "run_desktop.py"], cwd=root, check=True, env=environment,
     )
     archive = shutil.make_archive(str(root / archive_name), "zip",

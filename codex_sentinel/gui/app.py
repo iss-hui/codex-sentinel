@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
 from codex_sentinel.config import ConfigManager
 from codex_sentinel.gui.common import tr
+from codex_sentinel.gui.icons import application_icon
 from codex_sentinel.gui.main_window import MainWindow
 from codex_sentinel.gui.tray_icon import SentinelTrayIcon
 from codex_sentinel.i18n import set_lang
@@ -35,6 +36,7 @@ QLabel#sectionTitle { font-size: 14px; font-weight: bold; color: #cdd6f4; }
 def main(overrides=None, dry_run=False, smoke_test=False):
     app = QApplication([sys.argv[0]])
     app.setApplicationName("Codex Sentinel")
+    app.setWindowIcon(application_icon())
     app.setQuitOnLastWindowClosed(False)
     app.setStyleSheet(DARK_STYLESHEET)
     manager = ConfigManager()
@@ -77,7 +79,6 @@ def main(overrides=None, dry_run=False, smoke_test=False):
     if QSystemTrayIcon.isSystemTrayAvailable():
         tray = SentinelTrayIcon(window)
         window.tray = tray
-        window.setWindowIcon(tray.icon())
         tray.show_dashboard_requested.connect(
             lambda: (window.showNormal(), window.raise_(), window.activateWindow())
         )

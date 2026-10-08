@@ -1,3 +1,5 @@
+<img src="codex_sentinel/gui/assets/logo.png" width="96" height="96" alt="Codex Sentinel logo">
+
 # Codex Sentinel 2.0
 
 本地优先的 Codex 桌面限额看板、窗口启动预约和对话恢复工具。
