@@ -8,7 +8,7 @@
 
 ## 启动
 
-Windows 桌面包：解压 `CodexSentinel-windows-x64.zip`，双击文件夹中的 `CodexSentinel.exe`。请保留旁边的 `_internal` 目录。需要已安装并登录的官方 Codex CLI；Sentinel 会自动查找，也可在设置中指定路径。
+Windows 桌面包：解压 `CodexSentinel-windows-x64-v<version>.zip`，双击文件夹中的 `CodexSentinel.exe`。请保留旁边的 `_internal` 目录。需要已安装并登录的官方 Codex CLI；Sentinel 会自动查找，也可在设置中指定路径。
 
 源码运行（Python 3.10+）：
 
@@ -91,5 +91,7 @@ codex-sentinel --status        原有单次限额检查
 图形测试使用 Qt offscreen 和隔离数据，不调用真实模型。`scripts/render_gui.py` 使用示例数据生成五个页面截图。Windows 包输出为 `dist/desktop/CodexSentinel/`，压缩包为 `dist/CodexSentinel-windows-x64.zip`。
 
 原有 `--daemon` 仍为旧实现。新增预约、日志去重、可配置的桌面交接与执行进程组清理由 GUI 提供。建议使用桌面模式。
+
+推送 `v<version>` 标签会触发 GitHub 发布，标签版本必须与 `pyproject.toml` 和 `codex_sentinel/__init__.py` 中的版本一致。Release 标题、CI 构建产物和独立程序下载文件均带标签版本号，例如 `CodexSentinel-windows-x64-v2.0.3.zip`。Python wheel 和源码包保留标准的带版本号文件名。
 
 MIT License，详见 [LICENSE](LICENSE)。

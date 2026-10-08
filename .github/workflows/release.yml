@@ -1,4 +1,5 @@
 name: Release
+run-name: Release ${{ github.ref_name }}
 
 on:
   push:
@@ -7,6 +8,9 @@ on:
 
 permissions:
   contents: write
+
+env:
+  RELEASE_TAG: ${{ github.ref_name }}
 
 jobs:
   build-pypi:
@@ -20,6 +24,23 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Validate release version
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          import runpy
+          import tomllib
+
+          version = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+          runtime_version = runpy.run_path("codex_sentinel/__init__.py")["__version__"]
+          tag = os.environ["RELEASE_TAG"]
+          if tag != f"v{version}" or runtime_version != version:
+              raise SystemExit(
+                  f"Release tag {tag!r}, project version {version!r} and runtime version {runtime_version!r} must match."
+              )
+          print(f"Building release {tag}")
+
       - name: Install build tools
         run: |
           python -m pip install --upgrade pip
@@ -31,8 +52,9 @@ jobs:
       - name: Upload PyPI artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: pypi-dist
+          name: pypi-dist-${{ env.RELEASE_TAG }}
           path: dist/*
+          if-no-files-found: error
 
   build-windows-exe:
     name: Build Windows Standalone EXE
@@ -52,16 +74,18 @@ jobs:
 
       - name: Compile Windows EXE
         run: |
-          pyinstaller --clean --noconfirm --onefile --name codex-sentinel-windows-x64 --windowed run_sentinel.py
+          pyinstaller --clean --noconfirm --onefile --name "codex-sentinel-windows-x64-${env:RELEASE_TAG}" --windowed run_sentinel.py
           python scripts/build_windows.py
+          Move-Item -LiteralPath "dist/CodexSentinel-windows-x64.zip" -Destination "dist/CodexSentinel-windows-x64-${env:RELEASE_TAG}.zip"
 
       - name: Upload Windows EXE
         uses: actions/upload-artifact@v4
         with:
-          name: windows-exe
+          name: windows-exe-${{ env.RELEASE_TAG }}
           path: |
-            dist/codex-sentinel-windows-x64.exe
-            dist/CodexSentinel-windows-x64.zip
+            dist/codex-sentinel-windows-x64-${{ env.RELEASE_TAG }}.exe
+            dist/CodexSentinel-windows-x64-${{ env.RELEASE_TAG }}.zip
+          if-no-files-found: error
 
   build-linux-binary:
     name: Build Linux Standalone Binary
@@ -81,14 +105,15 @@ jobs:
 
       - name: Compile Linux Binary
         run: |
-          pyinstaller --clean --noconfirm --onefile --name codex-sentinel-linux-x64 run_sentinel.py
-          chmod +x dist/codex-sentinel-linux-x64
+          pyinstaller --clean --noconfirm --onefile --name "codex-sentinel-linux-x64-${RELEASE_TAG}" run_sentinel.py
+          chmod +x "dist/codex-sentinel-linux-x64-${RELEASE_TAG}"
 
       - name: Upload Linux Binary
         uses: actions/upload-artifact@v4
         with:
-          name: linux-bin
-          path: dist/codex-sentinel-linux-x64
+          name: linux-bin-${{ env.RELEASE_TAG }}
+          path: dist/codex-sentinel-linux-x64-${{ env.RELEASE_TAG }}
+          if-no-files-found: error
 
   build-macos-binary:
     name: Build macOS Standalone Binary
@@ -108,14 +133,15 @@ jobs:
 
       - name: Compile macOS Binary
         run: |
-          pyinstaller --clean --noconfirm --onefile --name codex-sentinel-macos run_sentinel.py
-          chmod +x dist/codex-sentinel-macos
+          pyinstaller --clean --noconfirm --onefile --name "codex-sentinel-macos-${RELEASE_TAG}" run_sentinel.py
+          chmod +x "dist/codex-sentinel-macos-${RELEASE_TAG}"
 
       - name: Upload macOS Binary
         uses: actions/upload-artifact@v4
         with:
-          name: macos-bin
-          path: dist/codex-sentinel-macos
+          name: macos-bin-${{ env.RELEASE_TAG }}
+          path: dist/codex-sentinel-macos-${{ env.RELEASE_TAG }}
+          if-no-files-found: error
 
   create-github-release:
     name: Publish GitHub Release
@@ -125,30 +151,32 @@ jobs:
       - name: Download PyPI artifacts
         uses: actions/download-artifact@v4
         with:
-          name: pypi-dist
+          name: pypi-dist-${{ env.RELEASE_TAG }}
           path: release-assets
 
       - name: Download Windows EXE
         uses: actions/download-artifact@v4
         with:
-          name: windows-exe
+          name: windows-exe-${{ env.RELEASE_TAG }}
           path: release-assets
 
       - name: Download Linux Binary
         uses: actions/download-artifact@v4
         with:
-          name: linux-bin
+          name: linux-bin-${{ env.RELEASE_TAG }}
           path: release-assets
 
       - name: Download macOS Binary
         uses: actions/download-artifact@v4
         with:
-          name: macos-bin
+          name: macos-bin-${{ env.RELEASE_TAG }}
           path: release-assets
 
       - name: Publish Release with All Assets
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: Codex Sentinel ${{ env.RELEASE_TAG }}
           files: release-assets/*
           generate_release_notes: true
           draft: false

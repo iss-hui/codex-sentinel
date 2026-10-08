@@ -8,7 +8,7 @@ A local-first desktop quota dashboard, scheduled turn launcher, and conversation
 
 ## Run
 
-On Windows, extract `CodexSentinel-windows-x64.zip` and open `CodexSentinel.exe`. Keep its `_internal` folder alongside it. Install and sign in to the official Codex CLI first; Sentinel detects it locally or accepts a path in Settings.
+On Windows, extract `CodexSentinel-windows-x64-v<version>.zip` and open `CodexSentinel.exe`. Keep its `_internal` folder alongside it. Install and sign in to the official Codex CLI first; Sentinel detects it locally or accepts a path in Settings.
 
 From source (Python 3.10+):
 
@@ -71,5 +71,7 @@ Windows build:
 ```
 
 Outputs: `dist/desktop/CodexSentinel/` and `dist/CodexSentinel-windows-x64.zip`. Packaging smoke check: `CodexSentinel.exe --smoke-test` (opens then closes without monitoring or execution).
+
+GitHub releases are triggered by pushing a `v<version>` tag that matches both `pyproject.toml` and `codex_sentinel/__init__.py`. Release titles, CI artifacts, and standalone downloads include the tag, for example `CodexSentinel-windows-x64-v2.0.3.zip`. Python wheels and source distributions retain their standard versioned filenames.
 
 [MIT License](LICENSE).
