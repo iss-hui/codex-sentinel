@@ -124,7 +124,7 @@ class MainWindow(QMainWindow):
             lambda: (self.page_quota.reset_form(), self.switch_page(1))
         )
         self.page_tasks.edit_requested.connect(self._edit_task)
-        self.page_tasks.cancel_requested.connect(self._cancel_task)
+        self.page_tasks.delete_requested.connect(self._delete_task)
         self.page_tasks.retry_requested.connect(self._retry_task)
         self.page_tasks.move_requested.connect(self._move_task)
         self.page_tasks.stop_requested.connect(self.stop_execution)
@@ -245,7 +245,7 @@ class MainWindow(QMainWindow):
         self.page_quota.edit_task(task)
         self.switch_page(1)
 
-    def _cancel_task(self, task_id):
+    def _delete_task(self, task_id):
         try:
             self.scheduler.remove_task(task_id)
             self._refresh_queue()

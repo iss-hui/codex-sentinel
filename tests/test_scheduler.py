@@ -69,6 +69,55 @@ def test_atomic_save_failure_never_marks_running(tmp_path, monkeypatch):
     assert QuotaScheduler(tmp_path).get(task.id).status == "pending"
 
 
+@pytest.mark.parametrize(
+    "status",
+    ["pending", "waiting", "completed", "failed", "interrupted", "cancelled", "missed", "simulated"],
+)
+def test_remove_task_deletes_record_and_preserves_other_tasks(tmp_path, status):
+    queue = QuotaScheduler(tmp_path)
+    first = queue.add_task("first", "hello", str(tmp_path))
+    task = queue.add_task("delete", "hello", str(tmp_path), scheduled_at=1000)
+    last = queue.add_task("last", "hello", str(tmp_path))
+    queue.update(task, status=status)
+
+    queue.remove_task(task.id)
+
+    assert queue.task_queue == [first, last]
+    assert [item.id for item in QuotaScheduler(tmp_path).task_queue] == [first.id, last.id]
+    with pytest.raises(KeyError):
+        queue.get(task.id)
+
+
+def test_remove_task_rejects_running_task(tmp_path):
+    queue = QuotaScheduler(tmp_path)
+    task = queue.add_task("running", "hello", str(tmp_path))
+    queue.update(task, status="running")
+
+    with pytest.raises(ValueError, match="Cannot delete a running task"):
+        queue.remove_task(task.id)
+
+    assert queue.task_queue == [task]
+    assert task.status == "running"
+
+
+def test_remove_task_restores_queue_when_save_fails(tmp_path, monkeypatch):
+    queue = QuotaScheduler(tmp_path)
+    first = queue.add_task("first", "hello", str(tmp_path))
+    task = queue.add_task("delete", "hello", str(tmp_path))
+    last = queue.add_task("last", "hello", str(tmp_path))
+
+    def fail(*args):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("codex_sentinel.quota_scheduler.write_json", fail)
+    with pytest.raises(OSError, match="disk full"):
+        queue.remove_task(task.id)
+
+    assert queue.task_queue == [first, task, last]
+    assert task.status == "pending"
+    assert [item.id for item in QuotaScheduler(tmp_path).task_queue] == [first.id, task.id, last.id]
+
+
 def test_config_round_trip_and_corrupt_file_preserved(tmp_path):
     config = ConfigManager(tmp_path)
     assert config.load()["auto_resume"] is False

@@ -22,7 +22,7 @@ from codex_sentinel.gui.common import permission_text, status_text, time_text, t
 class TaskQueuePage(QWidget):
     add_requested = Signal()
     edit_requested = Signal(str)
-    cancel_requested = Signal(str)
+    delete_requested = Signal(str)
     retry_requested = Signal(str)
     move_requested = Signal(str, int)
     stop_requested = Signal()
@@ -68,7 +68,7 @@ class TaskQueuePage(QWidget):
         row.addWidget(add)
         for label, signal in (
             (tr("编辑", "Edit"), self.edit_requested),
-            (tr("取消", "Cancel"), self.cancel_requested),
+            (tr("删除", "Delete"), self.delete_requested),
             (tr("重新排期至现在", "Reschedule now"), self.retry_requested),
         ):
             button = QPushButton(label)

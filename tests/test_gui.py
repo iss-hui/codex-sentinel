@@ -2,11 +2,12 @@ import time
 
 import pytest
 from PySide6.QtCore import QDateTime
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QPushButton
 
 from codex_sentinel.config import ConfigManager
 from codex_sentinel.gui.main_window import MainWindow
 from codex_sentinel.i18n import set_lang
+from codex_sentinel.quota_scheduler import QuotaScheduler
 
 
 @pytest.fixture(scope="module")
@@ -83,8 +84,16 @@ def test_pages_settings_and_schedule_persist(window, tmp_path):
     assert task.cwd == str(tmp_path)
     assert task.buffer_seconds == 60
     assert window.page_tasks.table.rowCount() == 1
-    window._cancel_task(task.id)
-    assert task.status == "cancelled"
+    window.page_tasks.table.selectRow(0)
+    delete = next(
+        button for button in window.page_tasks.findChildren(QPushButton)
+        if button.text() == "删除"
+    )
+    delete.click()
+    assert window.scheduler.task_queue == []
+    assert window.page_tasks.table.rowCount() == 0
+    assert window.page_tasks.detail.toPlainText() == ""
+    assert QuotaScheduler(window.manager.config_dir).task_queue == []
 
 
 def test_recovery_is_independent_of_queue_and_always_writable(window, tmp_path, monkeypatch):

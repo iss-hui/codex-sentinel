@@ -92,8 +92,13 @@ class QuotaScheduler:
         task = self.get(task_id)
         if task.status == "running":
             raise ValueError("Cannot delete a running task")
-        # Keep cancelled records for auto-resume deduplication and audit.
-        self.update(task, status="cancelled")
+        index = self.task_queue.index(task)
+        self.task_queue.pop(index)
+        try:
+            self.save()
+        except Exception:
+            self.task_queue.insert(index, task)
+            raise
 
     def get(self, task_id):
         task = next((t for t in self.task_queue if t.id == task_id), None)
