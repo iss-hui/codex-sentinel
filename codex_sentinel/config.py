@@ -12,6 +12,11 @@ DEFAULT_CONFIG = {
     "poll_interval": 5,
     "buffer_seconds": 30,
     "auto_resume": False,
+    "auto_activate": False,
+    "activation_cwd": "",
+    "activation_model": "",
+    "activation_bucket": "",
+    "activation_start_at": 0.0,
     "resume_prompt": "",
     "minimize_to_tray": True,
     "show_notifications": True,
@@ -68,6 +73,10 @@ class ConfigManager:
         for key, default in DEFAULT_CONFIG.items():
             if not isinstance(config.get(key), type(default)):
                 raise ValueError(f"Invalid setting: {key}")
+        if config["auto_resume"] and config["auto_activate"]:
+            raise ValueError("Choose either automatic recovery or activation")
+        if not 0 <= config["activation_start_at"] < 253402300800:
+            raise ValueError("Invalid activation start time")
         if config["language"] not in ("auto", "zh", "en"):
             raise ValueError("Invalid language")
         if not 1 <= config["poll_interval"] <= 300:

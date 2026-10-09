@@ -7,6 +7,7 @@ import os
 import subprocess
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from codex_sentinel.desktop_handoff import DesktopHandoff
@@ -16,6 +17,8 @@ from codex_sentinel.resume import find_codex_binary
 
 
 def build_command(task, binary):
+    if task.kind == "activation":
+        task = replace(task, session_id="", sandbox="read-only")
     if task.sandbox == "workspace-write":
         # The exec-specific preset enables on-request + auto_review together.
         # Passing only -a at the root CLI is not sufficient for all exec versions.
@@ -92,6 +95,8 @@ def execute_task(
     progress=None,
     exit_grace=2.0,
 ):
+    if task.kind == "activation":
+        task = replace(task, session_id="", sandbox="read-only")
     cancel = cancel or threading.Event()
     output = output or (lambda text: None)
     progress = progress or (lambda phase: None)
@@ -109,7 +114,7 @@ def execute_task(
 
     owner, desktop = OwnedProcess(), DesktopHandoff()
     events = TurnEvents(task.session_id)
-    timeout = timeout if timeout is not None else (120 if task.kind == "kick" else 3600)
+    timeout = timeout if timeout is not None else (120 if task.kind in ("kick", "activation") else 3600)
     try:
         # Resolve the CLI and prepare its log before interrupting the desktop.
         command = build_command(task, binary or find_codex_binary())

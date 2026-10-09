@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QHBoxLayout,
+    QLabel,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -16,16 +17,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from codex_sentinel.activation_monitor import ActivationMonitor
 from codex_sentinel.config import ConfigManager
 from codex_sentinel.gui.common import tr
+from codex_sentinel.gui.icons import application_icon
 from codex_sentinel.gui.pages.dashboard import DashboardPage
 from codex_sentinel.gui.pages.quota_timer import QuotaTimerPage
 from codex_sentinel.gui.pages.sessions import SessionsPage
 from codex_sentinel.gui.pages.settings import SettingsPage
 from codex_sentinel.gui.pages.task_queue import TaskQueuePage
 from codex_sentinel.gui.workers import ExecutionWorker, MonitorWorker
-from codex_sentinel.recovery_monitor import RecoveryMonitor
 from codex_sentinel.quota_scheduler import QuotaScheduler
+from codex_sentinel.recovery_monitor import RecoveryMonitor
 
 
 class MainWindow(QMainWindow):
@@ -35,6 +38,7 @@ class MainWindow(QMainWindow):
         self.settings = self.manager.load()
         self.scheduler = QuotaScheduler(self.manager.config_dir)
         self.recovery = RecoveryMonitor(self.manager.config_dir)
+        self.activation = ActivationMonitor(self.manager.config_dir)
         self.recovery.migrate_legacy(self.scheduler)
         self.recovery_dialog = None
         self.snapshot = {}
@@ -68,6 +72,19 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         layout = QHBoxLayout(central)
         sidebar = QVBoxLayout()
+        sidebar.setSpacing(8)
+        brand = QHBoxLayout()
+        logo = QLabel()
+        logo.setPixmap(application_icon().pixmap(32, 32))
+        brand.addWidget(logo)
+        name = QLabel("Sentinel")
+        name.setStyleSheet("font-size: 19px; font-weight: 600; color: #f1f3fa;")
+        brand.addWidget(name)
+        brand.addStretch()
+        sidebar.addLayout(brand)
+        subtitle = QLabel(tr("Codex 使用时间管理", "Codex usage planner"))
+        subtitle.setStyleSheet("color: #9fa6be; padding: 0px 0px 16px 0px;")
+        sidebar.addWidget(subtitle)
         self.nav_buttons = []
         for index, title in enumerate(
             (
@@ -81,6 +98,7 @@ class MainWindow(QMainWindow):
             button = QPushButton(title)
             button.setCheckable(True)
             button.setMinimumWidth(150)
+            button.setMinimumHeight(40)
             button.clicked.connect(lambda checked=False, i=index: self.switch_page(i))
             sidebar.addWidget(button)
             self.nav_buttons.append(button)
@@ -111,6 +129,7 @@ class MainWindow(QMainWindow):
         self.monitor_worker.snapshot_ready.connect(self._on_snapshot)
         self.monitor_worker.error_occurred.connect(self._scan_error)
         self.page_dashboard.settings_changed.connect(self._save_settings)
+        self.page_dashboard.activation_requested.connect(self._save_settings)
         # Automatic recovery has its own switch, independent of the queue.
         self.page_dashboard.chk_auto_resume.toggled.connect(
             lambda value: self._save_settings({"auto_resume": value}, reload=False)
@@ -143,6 +162,11 @@ class MainWindow(QMainWindow):
         self._refresh_recovery()
 
     def _save_settings(self, updates, reload=True):
+        updates = updates.copy()
+        if updates.get("auto_resume"):
+            updates["auto_activate"] = False
+        elif updates.get("auto_activate"):
+            updates["auto_resume"] = False
         try:
             self.manager.save(updates)
             self.settings = self.manager.load()
@@ -153,8 +177,12 @@ class MainWindow(QMainWindow):
             self.monitor_worker.refresh()
             if updates.get("auto_resume") is False and self.executor and self.executor.task.kind == "auto_resume":
                 self.executor.stop()
+            if updates.get("auto_activate") is False and self.executor and self.executor.task.kind == "activation":
+                self.executor.stop()
             if reload:
                 self._load_settings()
+            else:
+                self._refresh_recovery()
             self.page_dashboard.lbl_status.setText(tr("设置已保存", "Settings saved"))
         except Exception as exc:
             self._error(str(exc))
@@ -167,6 +195,21 @@ class MainWindow(QMainWindow):
         self.page_quota.on_snapshot(snapshot)
         self.page_sessions.on_scan_completed(snapshot["sessions"])
         self.page_tasks.set_sessions(snapshot["sessions"])
+        try:
+            if snapshot.get("available", True):
+                self.recovery.observe(snapshot, time.time())
+                if self.settings["auto_activate"] and not self.settings["activation_bucket"] and snapshot["buckets"]:
+                    self.manager.save({"activation_bucket": self.page_dashboard.cmb_activation_bucket.currentData()})
+                    self.settings = self.manager.load()
+                self.page_dashboard.lbl_monitor.setText(tr(f"本地监测 · {self.settings['poll_interval']} 秒", f"Local monitoring · {self.settings['poll_interval']}s"))
+            else:
+                self.page_dashboard.lbl_monitor.setText(tr("等待本地记录", "Waiting for local records"))
+            self._refresh_recovery()
+        except Exception as exc:  # noqa: BLE001 - Qt slot boundary; pause on any failed observation.
+            self.snapshot = {}
+            self.page_dashboard.lbl_monitor.setText(tr("检测暂停", "Monitoring paused"))
+            self.statusBar().showMessage(str(exc))
+            return
         message = " | ".join(snapshot["warnings"])
         self.statusBar().showMessage(
             message or tr("本地读取 · 无网络轮询", "Local reads · no network polling")
@@ -174,6 +217,7 @@ class MainWindow(QMainWindow):
 
     def _scan_error(self, message):
         self.snapshot = {}
+        self.page_dashboard.lbl_monitor.setText(tr("检测暂停", "Monitoring paused"))
         self.statusBar().showMessage(
             tr("扫描失败，自动执行暂停：", "Scan failed; execution paused: ") + message
         )
@@ -220,7 +264,7 @@ class MainWindow(QMainWindow):
     def show_recovery_history(self):
         if self.recovery_dialog is None:
             self.recovery_dialog = QDialog(self)
-            self.recovery_dialog.setWindowTitle(tr("自动恢复记录", "Automatic recovery history"))
+            self.recovery_dialog.setWindowTitle(tr("自动化记录与日志", "Automation history and logs"))
             self.recovery_dialog.resize(1000, 650)
             layout = QVBoxLayout(self.recovery_dialog)
             self.recovery_history = TaskQueuePage(read_only=True)
@@ -232,11 +276,12 @@ class MainWindow(QMainWindow):
     def _refresh_recovery(self):
         self.monitor_worker.recovery_session_id = self.recovery.target["session_id"] if self.recovery.target else ""
         self.page_dashboard.render_recovery(self.recovery.target, self.settings)
+        self.page_dashboard.render_activation(self.activation.plan(self.snapshot, self.settings), self.activation.target, self.settings)
         if self.recovery_dialog is not None:
-            tasks = self.recovery.history_tasks()
-            if self.executor and self.executor.task.kind == "auto_resume" and self.executor.task.status == "running":
+            tasks = self.recovery.history_tasks() + self.activation.history_tasks()
+            if self.executor and self.executor.task.kind in ("auto_resume", "activation") and self.executor.task.status == "running":
                 tasks.append(self.executor.task)
-            self.recovery_history.refresh_table(tasks)
+            self.recovery_history.refresh_table(sorted(tasks, key=lambda item: item.created_at, reverse=True))
 
     def _edit_task(self, task_id):
         task = self.scheduler.get(task_id)
@@ -283,6 +328,7 @@ class MainWindow(QMainWindow):
             self._update_tray_state(now)
         if (not self.snapshot or not self.snapshot.get("available", True)
                 or now - self.snapshot.get("scanned_at", 0) > max(30, self.settings["poll_interval"] * 3)):
+            self.page_dashboard.lbl_monitor.setText(tr("等待最新本地记录", "Waiting for fresh local records"))
             self._refresh_recovery()
             return
         try:
@@ -292,6 +338,7 @@ class MainWindow(QMainWindow):
                 return
             # Recovery has its own switch and no missed-schedule grace period.
             task = self.recovery.due_task(self.settings, now)
+            task = task or self.activation.due_task(self.snapshot, self.settings, now)
             task = task or self.scheduler.due_task(self.snapshot, self.settings, now)
             if task:
                 try:
@@ -303,7 +350,9 @@ class MainWindow(QMainWindow):
                     if self.executor is None and task.status == "running":
                         if task.kind == "auto_resume" and self.recovery.target["status"] == "running":
                             self.recovery.complete(task, {"code": 1, "error": str(exc)}, now)
-                        elif task.kind != "auto_resume":
+                        elif task.kind == "activation":
+                            self.activation.complete(task, {"code": 1, "error": str(exc)}, now)
+                        else:
                             self.scheduler.update(task, status="failed", completed_at=now, last_error=str(exc))
                     raise
             self._refresh_queue()
@@ -311,22 +360,23 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             # Never execute if recording the run or its completion failed.
             self._execution_error = True
-            self.settings.update(queue_enabled=False, auto_resume=False)
+            self.settings.update(queue_enabled=False, auto_resume=False, auto_activate=False)
             self._load_settings()
             self.statusBar().showMessage(tr("执行已暂停：", "Execution paused: ") + str(exc))
 
     def _dispatch(self, task, now):
-        automatic = task.kind == "auto_resume"
+        automatic = task.kind in ("auto_resume", "activation")
+        automation = self.recovery if task.kind == "auto_resume" else self.activation
         log_path = self.manager.config_dir / "logs" / f"{task.id}-{int(now)}.log"
         if automatic:
-            self.recovery.start(task, log_path, now)
+            automation.start(task, log_path, now)
         else:
             self.scheduler.update(task, status="running", started_at=now,
                                   log_file=str(log_path), last_error="")
         if self.dry_run:
             message = tr("模拟完成：没有调用 Codex", "Dry run: Codex was not invoked")
             if automatic:
-                self.recovery.complete(task, {"code": 0, "error": message, "simulated": True}, now)
+                automation.complete(task, {"code": 0, "error": message, "simulated": True}, now)
             else:
                 self.scheduler.update(task, status="simulated", completed_at=now, last_error=message)
             return
@@ -390,11 +440,12 @@ class MainWindow(QMainWindow):
         )
         try:
             if not result.get("cleanup_ok", True):
-                self.manager.save({"queue_enabled": False, "auto_resume": False})
-                self.settings.update(queue_enabled=False, auto_resume=False)
+                self.manager.save({"queue_enabled": False, "auto_resume": False, "auto_activate": False})
+                self.settings.update(queue_enabled=False, auto_resume=False, auto_activate=False)
                 self._load_settings()
-            if task.kind == "auto_resume":
-                self.recovery.complete(task, result, time.time())
+            if task.kind in ("auto_resume", "activation"):
+                automation = self.recovery if task.kind == "auto_resume" else self.activation
+                automation.complete(task, result, time.time())
             elif code == 75:
                 self.scheduler.update(
                     task,
@@ -435,7 +486,7 @@ class MainWindow(QMainWindow):
             self.monitor_worker.refresh()
         except Exception as exc:
             self._execution_error = True
-            self.settings.update(queue_enabled=False, auto_resume=False)
+            self.settings.update(queue_enabled=False, auto_resume=False, auto_activate=False)
             self.statusBar().showMessage(str(exc))
 
     def _execution_finished(self):

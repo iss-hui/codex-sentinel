@@ -448,3 +448,110 @@ def test_secondary_window_returns_after_bucket_changes(window, tmp_path):
     window._on_snapshot(data)
     assert page.window_bars[1].isEnabled()
     assert page.window_bars[1].value() == 50
+
+
+def test_recovery_target_title_and_directory_update_on_snapshot_without_tick(window, tmp_path):
+    data = snapshot(tmp_path)
+    now = time.time()
+    data["sessions"][0].update(task_status="rate_limited", limited_at=now - 50,
+        limits={"primary": {"used_percent": 100, "resets_at": now + 3600}})
+    window._on_snapshot(data)
+    assert "测试对话" in window.page_dashboard.lbl_recovery.text()
+    assert str(tmp_path) in window.page_dashboard.lbl_recovery_cwd.text()
+    other = tmp_path / "other-project"
+    other.mkdir()
+    data["sessions"][0].update(title="新的显示标题", cwd=str(other))
+    window._on_snapshot(data)
+    assert "新的显示标题" in window.page_dashboard.lbl_recovery.text()
+    assert str(other) in window.page_dashboard.lbl_recovery_cwd.text()
+
+
+def test_overview_enables_continuous_activation_and_excludes_recovery(window, tmp_path):
+    window._on_snapshot(snapshot(tmp_path))
+    window._save_settings({"auto_resume": True, "queue_enabled": False})
+    page = window.page_dashboard
+    page.set_mode(1)
+    page.txt_activation_cwd.setText(str(tmp_path))
+    page.cmb_activation_model.setCurrentText("cached-model")
+    page.btn_activate.click()
+    saved = ConfigManager(window.manager.config_dir).load()
+    assert saved["auto_activate"] and not saved["auto_resume"]
+    assert saved["queue_enabled"] is False  # No unrelated queue is enabled.
+    assert saved["activation_cwd"] == str(tmp_path)
+    assert saved["activation_model"] == "cached-model"
+    assert saved["activation_bucket"] == "codex"
+    assert window.scheduler.task_queue == []
+    assert page.mode_stack.currentIndex() == 1
+    assert "下次激活" in page.lbl_activation.text()
+    page.chk_auto_resume.setChecked(True)
+    assert window.settings["auto_resume"] and not window.settings["auto_activate"]
+
+
+def test_activation_executes_in_fresh_chat_once_with_queue_paused(app, window, tmp_path, monkeypatch):
+    calls = []
+    def execute(task, log_path, **kwargs):
+        calls.append((task.kind, task.session_id, task.sandbox))
+        return {"code": 0, "error": "", "session_id": "new-activation-chat"}
+    monkeypatch.setattr("codex_sentinel.gui.workers.execute_task", execute)
+    data = snapshot(tmp_path)
+    data["buckets"]["codex"]["primary"]["resets_at"] = time.time() - 40
+    window._on_snapshot(data)
+    window._save_settings({"auto_activate": True, "activation_cwd": str(tmp_path),
+        "activation_bucket": "codex", "queue_enabled": False})
+    window._tick()
+    deadline = time.monotonic() + 5
+    while window.executor is not None and time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.01)
+    assert calls == [("activation", "", "read-only")]
+    assert window.activation.target["status"] == "completed"
+    assert window.activation.target["session_id"] == "new-activation-chat"
+    window._on_snapshot(data)
+    window._tick()
+    assert len(calls) == 1
+    assert "等待新的五小时重置记录" in window.page_dashboard.lbl_activation.text()
+    window.show_recovery_history()
+    assert window.recovery_history.table.rowCount() == 1
+    window.page_dashboard.btn_cancel_activation.click()
+    assert not ConfigManager(window.manager.config_dir).load()["auto_activate"]
+
+
+def test_activation_never_executes_from_stale_snapshot(window, tmp_path):
+    window.dry_run = True
+    data = snapshot(tmp_path)
+    data["buckets"]["codex"]["primary"]["resets_at"] = time.time() - 40
+    data["scanned_at"] = time.time() - 1000
+    window._on_snapshot(data)
+    window._save_settings({"auto_activate": True, "activation_cwd": str(tmp_path), "activation_bucket": "codex"})
+    window._tick()
+    assert window.activation.target is None
+
+
+def test_enabling_before_records_arrive_remembers_first_quota(window, tmp_path):
+    window._save_settings({"auto_activate": True, "activation_cwd": str(tmp_path)})
+    window._on_snapshot(snapshot(tmp_path))
+    assert window.settings["activation_bucket"] == "codex"
+    assert ConfigManager(window.manager.config_dir).load()["activation_bucket"] == "codex"
+    assert "下次激活" in window.page_dashboard.lbl_activation.text()
+
+
+def test_disabling_activation_stops_current_activation(window, tmp_path):
+    from types import SimpleNamespace
+    window._save_settings({"auto_activate": True, "activation_cwd": str(tmp_path)})
+    calls = []
+    window.executor = SimpleNamespace(task=SimpleNamespace(kind="activation"), stop=lambda: calls.append("stop"))
+    window._save_settings({"auto_resume": True})
+    assert calls == ["stop"]
+    assert not window.settings["auto_activate"]
+    window.executor = None
+
+
+def test_overview_activation_keeps_saved_quota_across_reload(window, tmp_path):
+    window._save_settings({"activation_bucket": "other"})
+    data = snapshot(tmp_path)
+    data["buckets"]["other"] = {"primary": {"window_minutes": 300, "resets_at": time.time() + 10000}}
+    window._on_snapshot(data)
+    assert window.page_dashboard.cmb_activation_bucket.currentData() == "other"
+    data["buckets"].pop("other")
+    window._on_snapshot(data)
+    assert window.page_dashboard.cmb_activation_bucket.currentData() == "other"  # Never silently retarget.

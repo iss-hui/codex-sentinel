@@ -351,3 +351,25 @@ def test_unexpected_started_thread_never_retargets_task(tmp_path, monkeypatch):
     assert result["code"] != 0
     assert result["session_id"] == "chosen"
     assert "different conversation" in result["error"]
+
+
+def test_activation_command_never_resumes_or_requests_write_access(tmp_path):
+    task = QuotaScheduler(tmp_path).add_task("activation", "hello", str(tmp_path),
+        kind="activation", session_id="previous-chat", sandbox="workspace-write")
+    command = build_command(task, "codex")
+    assert "resume" not in command and "previous-chat" not in command
+    assert command[command.index("--sandbox") + 1] == "read-only"
+    assert "--approve-for-me" not in command
+
+
+def test_activation_ignores_stored_session_even_for_lock_and_log(tmp_path, monkeypatch):
+    import json
+    task = QuotaScheduler(tmp_path).add_task("activation", "hello", str(tmp_path),
+        kind="activation", session_id="previous-chat", sandbox="workspace-write")
+    fake_program(tmp_path, monkeypatch,
+        'import sys,json\nsys.stdin.read()\nprint(json.dumps({"type":"thread.started","thread_id":"fresh-chat"}))\nprint(json.dumps({"type":"turn.completed"}))\n')
+    monkeypatch.setattr("codex_sentinel.execution.is_thread_locked", lambda _: pytest.fail("must never access the old conversation"))
+    result = execute_task(task, tmp_path / "activation.log", binary="fake")
+    assert result["code"] == 0 and result["session_id"] == "fresh-chat"
+    record = json.loads((tmp_path / "activation.log").read_text().splitlines()[0])
+    assert record["session_id"] == "" and record["sandbox"] == "read-only"
