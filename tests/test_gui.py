@@ -555,3 +555,27 @@ def test_overview_activation_keeps_saved_quota_across_reload(window, tmp_path):
     data["buckets"].pop("other")
     window._on_snapshot(data)
     assert window.page_dashboard.cmb_activation_bucket.currentData() == "other"  # Never silently retarget.
+
+
+@pytest.mark.parametrize("status, error", [("completed", ""), ("failed", "quota exhausted"),
+    ("completed", "Process cleanup failed")])
+def test_log_detail_shows_result_above_auxiliary_errors(window, tmp_path, status, error):
+    from codex_sentinel.gui.common import status_text, time_text
+
+    task = window.scheduler.add_task("activation", "Started.", str(tmp_path), kind="activation")
+    log = tmp_path / "activation.log"
+    log.write_text('ERROR rmcp::transport::worker: HTTP 502\n', encoding="utf-8")
+    task.status, task.last_error = status, error
+    task.completed_at, task.log_file = 1791524529, str(log)
+    window._refresh_queue()
+    page = window.page_tasks
+    page.table.selectRow(0)
+    detail = page.detail.toPlainText()
+    assert f"执行状态: {status_text(status)}" in detail
+    assert f"完成时间: {time_text(task.completed_at)}" in detail
+    assert detail.index("执行状态:") < detail.index("HTTP 502")
+    assert ("执行已完成。原始日志中的辅助服务错误或警告不代表本次执行失败。" in detail) == (
+        status == "completed" and not error
+    )
+    if error:
+        assert error in detail

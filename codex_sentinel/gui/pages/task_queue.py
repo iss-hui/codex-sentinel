@@ -164,6 +164,8 @@ class TaskQueuePage(QWidget):
         )
         text = (
             f"{task.name}\n"
+            f"{tr('执行状态', 'Execution status')}: {status_text(task.status)}\n"
+            f"{tr('完成时间', 'Completed at')}: {time_text(task.completed_at)}\n"
             f"{tr('恢复 / 执行目标', 'Target conversation')}: {title}\n"
             f"{tr('目标会话 ID', 'Target thread ID')}: {task.session_id or '—'}\n"
             f"{tr('模型', 'Model')}: {task.model or tr('默认', 'Default')}\n"
@@ -171,41 +173,53 @@ class TaskQueuePage(QWidget):
             f"{tr('执行权限', 'Execution permissions')}: {permission_text(task.sandbox)}\n"
             f"{tr('发送语句', 'Prompt')}: {task.prompt}\n{error_part}\n"
         )
+        if task.status == "completed" and not task.last_error:
+            text += tr(
+                "执行已完成。原始日志中的辅助服务错误或警告不代表本次执行失败。\n\n",
+                "Execution completed. Auxiliary service errors or warnings in the raw log do not mean this run failed.\n\n",
+            )
         if task.log_file:
             text += f"Log: {task.log_file}\n"
-            try:
-                with Path(task.log_file).open("rb") as stream:
-                    # The tail often excludes thread.started. Keep the actual
-                    # CLI target visible above tool output, even for long logs.
-                    for line in (
-                        stream.read(16384)
-                        .decode("utf-8", errors="replace")
-                        .splitlines()
-                    ):
-                        try:
-                            event = json.loads(line)
-                        except ValueError:
-                            continue
-                        if (
-                            isinstance(event, dict)
-                            and event.get("type") == "thread.started"
+            log_path = Path(task.log_file)
+            if not log_path.exists():
+                text += tr(
+                    "（日志文件不存在；可能在执行初始化阶段发生异常）\n",
+                    "(Log file does not exist; an error may have occurred during initialization)\n",
+                )
+            else:
+                try:
+                    with log_path.open("rb") as stream:
+                        # The tail often excludes thread.started. Keep the actual
+                        # CLI target visible above tool output, even for long logs.
+                        for line in (
+                            stream.read(16384)
+                            .decode("utf-8", errors="replace")
+                            .splitlines()
                         ):
-                            actual_id = event.get("thread_id") or "—"
-                            text += f"{tr('实际启动会话 ID', 'Started thread ID')}: {actual_id}\n"
-                            if task.session_id and actual_id != task.session_id:
-                                text += tr(
-                                    "注意：实际启动 ID 与目标不一致。\n",
-                                    "Warning: started ID differs from the target.\n",
-                                )
-                            break
-                    text += tr(
-                        "\n原始执行日志（含工具调用与命令输出；其中提及的其他标题不代表恢复目标）：\n",
-                        "\nRaw execution log (includes tool calls and command output; mentioned titles are not target identities):\n",
-                    )
-                    stream.seek(max(0, Path(task.log_file).stat().st_size - 24000))
-                    text += stream.read().decode("utf-8", errors="replace")
-            except OSError as exc:
-                text += str(exc)
+                            try:
+                                event = json.loads(line)
+                            except ValueError:
+                                continue
+                            if (
+                                isinstance(event, dict)
+                                and event.get("type") == "thread.started"
+                            ):
+                                actual_id = event.get("thread_id") or "—"
+                                text += f"{tr('实际启动会话 ID', 'Started thread ID')}: {actual_id}\n"
+                                if task.session_id and actual_id != task.session_id:
+                                    text += tr(
+                                        "注意：实际启动 ID 与目标不一致。\n",
+                                        "Warning: started ID differs from the target.\n",
+                                    )
+                                break
+                        text += tr(
+                            "\n原始执行日志（含工具调用与命令输出；其中提及的其他标题不代表恢复目标）：\n",
+                            "\nRaw execution log (includes tool calls and command output; mentioned titles are not target identities):\n",
+                        )
+                        stream.seek(max(0, log_path.stat().st_size - 24000))
+                        text += stream.read().decode("utf-8", errors="replace")
+                except OSError as exc:
+                    text += str(exc)
         # QTextDocument normalizes Windows newlines; compare the same form so
         # unchanged logs do not trigger a full replacement on every tick.
         text = text.replace("\r\n", "\n").replace("\r", "\n")

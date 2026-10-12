@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.5] - 2026-10-12
+
+### Fixed
+- Dynamically detect Codex CLI executables without stale in-memory caching across background updates.
+- Ensure task execution logs are initialized even if preflight checks fail.
+- Display a friendly hint in task history when a log file is absent instead of a raw filesystem error.
+- Disable unused MCP servers, connectors, and plugins only for five-hour window activation commands, keeping user configuration intact.
+- Show execution status and completion time above raw logs, so auxiliary service errors do not obscure a completed activation.
+
 ## [2.0.4] - 2026-10-09
 
 ### Added

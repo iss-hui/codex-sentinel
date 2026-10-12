@@ -1,4 +1,5 @@
 import json
+import sys
 import time
 from pathlib import Path
 import pytest
@@ -235,3 +236,66 @@ def test_next_reset_uses_selected_conversation_bucket(app, tmp_path, monkeypatch
     page.task_requested.connect(submitted.append)
     page.submit()
     assert submitted[0]["scheduled_at"] == expected
+
+
+def test_find_codex_binary_updates_dynamically_when_binary_replaced(tmp_path, monkeypatch):
+    from codex_sentinel.resume import find_codex_binary
+
+    bin_dir = tmp_path / "AppData" / "Local" / "OpenAI" / "Codex" / "bin"
+    v1_dir = bin_dir / "hash1"
+    v1_dir.mkdir(parents=True)
+    v1_exe = v1_dir / ("codex.exe" if sys.platform == "win32" else "codex")
+    v1_exe.write_text("v1")
+
+    monkeypatch.setattr("codex_sentinel.resume.Path.home", lambda: tmp_path)
+    monkeypatch.setattr("codex_sentinel.resume.shutil.which", lambda _: None)
+    monkeypatch.setattr(
+        "codex_sentinel.resume._get_codex_version",
+        lambda p: (1, 0, 0) if "hash1" in str(p) else (2, 0, 0),
+    )
+
+    # First discovery finds v1
+    found = find_codex_binary()
+    assert str(v1_exe) == found
+
+    # Codex auto-updates: v1 deleted, v2 created
+    v1_exe.unlink()
+    v2_dir = bin_dir / "hash2"
+    v2_dir.mkdir(parents=True)
+    v2_exe = v2_dir / ("codex.exe" if sys.platform == "win32" else "codex")
+    v2_exe.write_text("v2")
+
+    # Dynamic search must discover v2 and NOT return deleted v1
+    found_after = find_codex_binary()
+    assert str(v2_exe) == found_after
+
+
+def test_execute_task_creates_log_file_on_preflight_failure(tmp_path, monkeypatch):
+    from codex_sentinel.execution import execute_task
+
+    task = QuotaScheduler(tmp_path).add_task("test", "hello", str(tmp_path), kind="activation")
+    monkeypatch.setattr(
+        "codex_sentinel.execution.activation_config_overrides",
+        lambda *args, **kwargs: (_ for _ in ()).throw(FileNotFoundError("[WinError 2] missing")),
+    )
+    log_path = tmp_path / "preflight_fail.log"
+    result = execute_task(task, log_path, binary="fake")
+    assert result["code"] == 1
+    assert "missing" in result["error"]
+    assert log_path.exists()
+    assert "missing" in log_path.read_text(encoding="utf-8")
+
+
+def test_task_queue_page_shows_graceful_missing_log_message(app, tmp_path):
+    page = TaskQueuePage()
+    try:
+        scheduler = QuotaScheduler(tmp_path)
+        missing_log = tmp_path / "missing.log"
+        task = scheduler.add_task("missing_test", "prompt", str(tmp_path), log_file=str(missing_log))
+        page.refresh_table([task])
+        page.table.selectRow(0)
+        app.processEvents()
+        assert "[Errno 2]" not in page.detail.toPlainText()
+        assert "不存在" in page.detail.toPlainText() or "does not exist" in page.detail.toPlainText()
+    finally:
+        page.close()

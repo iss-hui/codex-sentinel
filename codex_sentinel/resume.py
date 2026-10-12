@@ -18,11 +18,12 @@ from codex_sentinel.i18n import t
 import re
 
 
-def _get_codex_version(path: Path) -> tuple[int, int, int]:
+@lru_cache(maxsize=32)
+def _get_codex_version(path_str: str) -> tuple[int, int, int]:
     """Extract (major, minor, patch) version from codex executable."""
     try:
         out = subprocess.check_output(
-            [str(path), "--version"],
+            [path_str, "--version"],
             stderr=subprocess.STDOUT,
             text=True,
             timeout=3,
@@ -36,11 +37,11 @@ def _get_codex_version(path: Path) -> tuple[int, int, int]:
     return (0, 0, 0)
 
 
-@lru_cache(maxsize=1)
 def find_codex_binary() -> str:
     """
     Search for all candidate `codex` executables and select the HIGHEST available version.
     This guarantees that older CLI versions in PATH do not reject newer models (such as gpt-6-astra).
+    Scans dynamically to prevent stale cached paths when Codex auto-updates.
     """
     home = Path.home()
     candidate_paths: List[Path] = []
@@ -73,12 +74,12 @@ def find_codex_binary() -> str:
         ])
 
     # Deduplicate existing candidates
-    valid_candidates = [p for p in set(candidate_paths) if p.exists()]
+    valid_candidates = [p for p in set(candidate_paths) if p.is_file()]
     if not valid_candidates:
         return "codex"
 
     # Sort by version descending (highest version first)
-    valid_candidates.sort(key=_get_codex_version, reverse=True)
+    valid_candidates.sort(key=lambda p: _get_codex_version(str(p)), reverse=True)
     return str(valid_candidates[0])
 
 

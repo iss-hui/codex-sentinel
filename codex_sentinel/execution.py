@@ -53,6 +53,40 @@ def require_auto_review(binary):
         )
 
 
+def activation_config_overrides(binary, cwd):
+    """Skip unused integrations for this activation without changing user config."""
+    overrides = [
+        "-c", "features.apps=false",
+        "-c", "features.plugins=false",
+        "-c", "suppress_unstable_features_warning=true",
+    ]
+    result = subprocess.run(
+        [binary, *overrides, "mcp", "list", "--json"],
+        cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, check=False,
+        encoding="utf-8", errors="replace", timeout=5,
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+    )
+    if result.returncode:
+        raise RuntimeError("Could not read MCP configuration; activation was not started.")
+    try:
+        servers = json.loads(result.stdout)
+    except ValueError as exc:
+        raise RuntimeError("Invalid MCP configuration list; activation was not started.") from exc
+    if not isinstance(servers, list) or any(
+        not isinstance(server, dict) or not isinstance(server.get("name"), str)
+        for server in servers
+    ):
+        raise RuntimeError("Invalid MCP configuration list; activation was not started.")
+    if servers:
+        # Override the table value: CLI dotted keys do not unquote TOML keys.
+        disabled = ",".join(
+            json.dumps(server["name"], ensure_ascii=False) + "={enabled=false}"
+            for server in servers
+        )
+        overrides.extend(["-c", "mcp_servers={" + disabled + "}"])
+    return overrides
+
+
 class TurnEvents:
     """Parse only top-level lifecycle events, never nested command output."""
 
@@ -118,6 +152,8 @@ def execute_task(
     try:
         # Resolve the CLI and prepare its log before interrupting the desktop.
         command = build_command(task, binary or find_codex_binary())
+        if task.kind == "activation":
+            command[1:1] = activation_config_overrides(command[0], task.cwd)
         if task.sandbox == "workspace-write":
             require_auto_review(command[0])
         log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -225,6 +261,20 @@ def execute_task(
                     cancel.wait(0.1)
     except Exception as exc:
         result["error"] = str(exc)
+        if not log_path.exists():
+            try:
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                log_path.write_text(
+                    json.dumps({
+                        "type": "sentinel.execution",
+                        "session_id": task.session_id,
+                        "sandbox": task.sandbox,
+                        "error": str(exc),
+                    }) + "\n",
+                    encoding="utf-8",
+                )
+            except Exception:
+                pass
     finally:
         result["session_id"] = task.session_id or events.session_id
         if owner.process is not None:

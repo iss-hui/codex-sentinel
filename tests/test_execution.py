@@ -84,6 +84,7 @@ def test_unsupported_auto_review_fails_before_desktop_handoff(tmp_path, monkeypa
 
 
 def fake_program(tmp_path, monkeypatch, code):
+    monkeypatch.setattr("codex_sentinel.execution.activation_config_overrides", lambda *args: [])
     path = tmp_path / "fake_cli.py"
     path.write_text(code, encoding="utf-8")
     monkeypatch.setattr(
@@ -99,6 +100,8 @@ def test_actual_child_stdin_logs_and_completion(tmp_path, monkeypatch):
         monkeypatch,
         'import sys,json\nprompt=sys.stdin.buffer.read().decode("utf-8")\nprint(json.dumps({"type":"thread.started","thread_id":"new-thread"}))\nprint(json.dumps({"prompt":prompt}))\nprint(json.dumps({"type":"turn.completed"}))\n',
     )
+    monkeypatch.setattr("codex_sentinel.execution.activation_config_overrides",
+        lambda *args: pytest.fail("regular tasks must retain configured integrations"))
     log = tmp_path / "run.log"
     result = execute_task(task, log, binary="fake")
     assert result["code"] == 0
@@ -373,3 +376,77 @@ def test_activation_ignores_stored_session_even_for_lock_and_log(tmp_path, monke
     assert result["code"] == 0 and result["session_id"] == "fresh-chat"
     record = json.loads((tmp_path / "activation.log").read_text().splitlines()[0])
     assert record["session_id"] == "" and record["sandbox"] == "read-only"
+
+
+def test_activation_overrides_disable_effective_mcp(tmp_path, monkeypatch):
+    import json
+    from types import SimpleNamespace
+
+    from codex_sentinel.execution import activation_config_overrides
+
+    calls = []
+    names = ["docs", 'server.with.\"quotes\"']
+
+    def list_servers(command, **kwargs):
+        calls.append((command, kwargs))
+        return SimpleNamespace(returncode=0, stdout=json.dumps([
+            {"name": name, "enabled": True} for name in names
+        ]))
+
+    monkeypatch.setattr("codex_sentinel.execution.subprocess.run", list_servers)
+    overrides = activation_config_overrides("codex.exe", str(tmp_path))
+    assert calls[0][0] == ["codex.exe", *overrides[:6], "mcp", "list", "--json"]
+    assert calls[0][1]["cwd"] == str(tmp_path)
+    assert calls[0][1]["timeout"] == 5
+    assert overrides[:6] == [
+        "-c", "features.apps=false", "-c", "features.plugins=false",
+        "-c", "suppress_unstable_features_warning=true",
+    ]
+    assert overrides[6:] == ["-c",
+        'mcp_servers={"docs"={enabled=false},"server.with.\\"quotes\\""={enabled=false}}']
+
+
+@pytest.mark.parametrize("stdout, returncode", [("[]", 1), ('{"name":"docs"}', 0), ('[{}]', 0), ("not json", 0)])
+def test_activation_config_failure_never_starts_cli(tmp_path, monkeypatch, stdout, returncode):
+    from types import SimpleNamespace
+
+    task = QuotaScheduler(tmp_path).add_task("activation", "hello", str(tmp_path), kind="activation")
+    monkeypatch.setattr("codex_sentinel.execution.subprocess.run", lambda *a, **kw:
+        SimpleNamespace(returncode=returncode, stdout=stdout))
+    monkeypatch.setattr("codex_sentinel.execution.OwnedProcess.start", lambda *a, **kw:
+        pytest.fail("must not start activation with unreadable MCP configuration"))
+    result = execute_task(task, tmp_path / "activation.log", binary="fake")
+    assert result["code"] != 0
+    assert "activation was not started" in result["error"]
+
+
+@pytest.mark.parametrize("terminal", ["turn.completed", "turn.failed"])
+def test_activation_transport_errors_follow_terminal_result(tmp_path, monkeypatch, terminal):
+    import json
+
+    task = QuotaScheduler(tmp_path).add_task("activation", "hello", str(tmp_path), kind="activation")
+    transcript = "\n".join([
+        json.dumps({"type": "thread.started", "thread_id": "fresh-activation"}),
+        '2026-10-09T05:41:58Z ERROR rmcp::transport::worker: UnexpectedServerResponse("HTTP 502: ")',
+        json.dumps({"type": "item.completed", "item": {"type": "error", "message":
+            "Under-development features enabled: respect_system_proxy."}}),
+        json.dumps({"type": "turn.started"}),
+        "ERROR codex_models_manager::manager: failed to refresh available models: request timed out",
+        json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "Started."}}),
+        json.dumps({"type": terminal, "error": {"message": "quota exhausted"}}),
+    ])
+    fake_program(tmp_path, monkeypatch,
+        f"import sys\nsys.stdin.read()\nprint({transcript!r})\nsys.exit(1)\n")
+    probes = []
+    monkeypatch.setattr("codex_sentinel.execution.activation_config_overrides",
+        lambda binary, cwd: probes.append((binary, cwd)) or ["-u"])
+    log = tmp_path / "activation.log"
+    result = execute_task(task, log, binary="fake")
+    assert probes == [(sys.executable, str(tmp_path))]
+    assert result["session_id"] == "fresh-activation"
+    assert result["code"] == (0 if terminal == "turn.completed" else 1)
+    if terminal == "turn.completed":
+        assert result["error"] == ""
+    else:
+        assert "quota exhausted" in result["error"]
+    assert "HTTP 502" in log.read_text(encoding="utf-8")
