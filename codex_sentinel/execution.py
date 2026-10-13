@@ -20,9 +20,10 @@ def build_command(task, binary):
     if task.kind == "activation":
         task = replace(task, session_id="", sandbox="read-only")
     if task.sandbox == "workspace-write":
-        # The exec-specific preset enables on-request + auto_review together.
+        # The exec preset enables workspace-write + on-request + auto_review.
+        # It conflicts with an explicit --sandbox, even with the same value.
         # Passing only -a at the root CLI is not sufficient for all exec versions.
-        command = [binary, "exec", "--sandbox", "workspace-write", "--approve-for-me"]
+        command = [binary, "exec", "--approve-for-me"]
     elif task.sandbox == "read-only":
         command = [binary, "-a", "never", "exec", "--sandbox", "read-only"]
     else:

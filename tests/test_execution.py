@@ -41,7 +41,9 @@ def test_writable_command_uses_exec_auto_review_preset(tmp_path, session_id):
         session_id=session_id, sandbox="workspace-write",
     )
     command = build_command(task, "codex.exe")
-    assert command[:5] == ["codex.exe", "exec", "--sandbox", "workspace-write", "--approve-for-me"]
+    assert command[:3] == ["codex.exe", "exec", "--approve-for-me"]
+    # The automatic-review preset selects workspace-write and conflicts with -s.
+    assert "--sandbox" not in command and "-s" not in command
     assert "never" not in command
     assert not any("danger" in arg for arg in command)
     assert ("resume" in command) == bool(session_id)
