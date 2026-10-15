@@ -49,6 +49,8 @@ A scheduled message **does not guarantee a new five-hour window**. The server co
 
 The computer must be awake and the app running. Manual schedules have a configurable five-minute grace period, after which they need explicit rescheduling. Failed or interrupted manual tasks never automatically replay. Automatic recovery rechecks the latest local interruption after waking, waits for every exhausted window and the buffer, and continues watching after completion. A renewed quota error waits for a new reset record; transient network errors retry at most twice, after 30 and 60 seconds. Successful, cancelled, approval-failed, or crash-interrupted recovery is not replayed for the same interruption. Inspect failed logs because partial work may have occurred. Lightweight messages time out after 120 seconds; tasks after one hour.
 
+Before continuous activation, the MCP configuration query allows 30 seconds per attempt and retries once on timeout. If both attempts time out, activation fails before sending a message. Retrying this query does not resend an activation message.
+
 ## Data and network
 
 Monitoring reads only local `sessions/**/*.jsonl`, `state_5.sqlite` (read-only), `.codex-global-state.json` (project membership/order), and `models_cache.json` beneath `CODEX_HOME` (default `~/.codex`). Incremental scans cover the latest 100 rollouts, the latest 100 visible user conversations, and the active recovery target, every five seconds by default. The conversation picker reads the full index. Older unscanned turn states remain unknown. Sentinel makes no account/rate-limit polling requests and does not inspect credentials.

@@ -399,13 +399,78 @@ def test_activation_overrides_disable_effective_mcp(tmp_path, monkeypatch):
     overrides = activation_config_overrides("codex.exe", str(tmp_path))
     assert calls[0][0] == ["codex.exe", *overrides[:6], "mcp", "list", "--json"]
     assert calls[0][1]["cwd"] == str(tmp_path)
-    assert calls[0][1]["timeout"] == 5
+    assert calls[0][1]["timeout"] == 30
     assert overrides[:6] == [
         "-c", "features.apps=false", "-c", "features.plugins=false",
         "-c", "suppress_unstable_features_warning=true",
     ]
     assert overrides[6:] == ["-c",
         'mcp_servers={"docs"={enabled=false},"server.with.\\"quotes\\""={enabled=false}}']
+
+
+def test_activation_allows_slow_mcp_query(tmp_path, monkeypatch):
+    import subprocess
+
+    from codex_sentinel.execution import activation_config_overrides
+
+    run = subprocess.run
+    script = tmp_path / "slow_mcp.py"
+    script.write_text("import time\ntime.sleep(6)\nprint('[{\"name\":\"docs\"}]')\n")
+    calls = []
+
+    def slow_query(command, **kwargs):
+        calls.append(command)
+        return run([sys.executable, str(script)], **kwargs)
+
+    monkeypatch.setattr("codex_sentinel.execution.subprocess.run", slow_query)
+    overrides = activation_config_overrides("codex.exe", str(tmp_path))
+    assert len(calls) == 1
+    assert overrides[-1] == 'mcp_servers={"docs"={enabled=false}}'
+
+
+def test_activation_retries_mcp_query_after_timeout(tmp_path, monkeypatch):
+    import subprocess
+    from types import SimpleNamespace
+
+    from codex_sentinel.execution import activation_config_overrides
+
+    calls = []
+
+    def query(command, **kwargs):
+        calls.append(command)
+        if len(calls) == 1:
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+        return SimpleNamespace(returncode=0, stdout='[{"name":"docs"}]')
+
+    monkeypatch.setattr("codex_sentinel.execution.subprocess.run", query)
+    overrides = activation_config_overrides("codex.exe", str(tmp_path))
+    assert len(calls) == 2 and calls[0] == calls[1]
+    assert overrides[-1] == 'mcp_servers={"docs"={enabled=false}}'
+
+
+def test_activation_mcp_timeout_never_sends_message(tmp_path, monkeypatch):
+    import json
+    import subprocess
+
+    task = QuotaScheduler(tmp_path).add_task(
+        "activation", "hello", str(tmp_path), kind="activation"
+    )
+    calls = []
+
+    def query(command, **kwargs):
+        calls.append(command)
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr("codex_sentinel.execution.subprocess.run", query)
+    monkeypatch.setattr("codex_sentinel.execution.OwnedProcess.start", lambda *a, **kw:
+        pytest.fail("must not send activation without disabling integrations"))
+    log = tmp_path / "activation.log"
+    result = execute_task(task, log, binary="codex.exe")
+    assert len(calls) == 2
+    assert result["code"] != 0 and result["session_id"] == ""
+    assert "timed out twice" in result["error"]
+    assert "activation was not started" in result["error"]
+    assert json.loads(log.read_text())["error"] == result["error"]
 
 
 @pytest.mark.parametrize("stdout, returncode", [("[]", 1), ('{"name":"docs"}', 0), ('[{}]', 0), ("not json", 0)])

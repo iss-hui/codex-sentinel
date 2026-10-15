@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.7] - 2026-10-15
+
+### Fixed
+- Allow 30 seconds for the activation MCP configuration check and retry that read-only query once on timeout, so transient CLI startup delays do not immediately fail activation. Repeated timeouts stop before sending a message and provide a clear error in the execution log.
+
 ## [2.0.6] - 2026-10-13
 
 ### Fixed

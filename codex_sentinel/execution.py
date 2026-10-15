@@ -61,12 +61,24 @@ def activation_config_overrides(binary, cwd):
         "-c", "features.plugins=false",
         "-c", "suppress_unstable_features_warning=true",
     ]
-    result = subprocess.run(
-        [binary, *overrides, "mcp", "list", "--json"],
-        cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, check=False,
-        encoding="utf-8", errors="replace", timeout=5,
-        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-    )
+    # CLI startup can exceed five seconds after an update or a cold start.
+    # Only retry this read-only query, before any activation message is sent.
+    for attempt in range(2):
+        try:
+            result = subprocess.run(
+                [binary, *overrides, "mcp", "list", "--json"],
+                cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, check=False,
+                encoding="utf-8", errors="replace", timeout=30,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            )
+            break
+        except subprocess.TimeoutExpired as exc:
+            if attempt == 1:
+                raise RuntimeError(
+                    "MCP configuration check timed out twice (30 seconds per attempt); "
+                    "activation was not started. Check the Codex CLI selected in Settings "
+                    "and schedule activation again."
+                ) from exc
     if result.returncode:
         raise RuntimeError("Could not read MCP configuration; activation was not started.")
     try:
