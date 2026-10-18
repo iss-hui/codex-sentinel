@@ -21,8 +21,9 @@ def main():
     destination = f"dist/desktop{suffix}"
     work = f"build/desktop{suffix}-isolated"
     archive_name = f"dist/CodexSentinel-windows-x64{suffix}"
+    helper_destination = f"dist/updater{suffix}"
     # PyInstaller may replace its existing generated output with --noconfirm.
-    for relative in (f"{destination}/CodexSentinel", work, f"{archive_name}.zip"):
+    for relative in (f"{destination}/CodexSentinel", work, f"{archive_name}.zip", helper_destination):
         (root / relative).resolve().relative_to(root)
     # Resolve native dependencies from this Python installation, not unrelated
     # tools on PATH (for example Poppler bundles incompatible Windows DLLs).
@@ -34,10 +35,27 @@ def main():
         python_root / "Library/bin", windows / "System32", windows,
     ) if p.is_dir())
     subprocess.run(
+        [sys.executable, "-m", "PyInstaller", "--noconfirm", "--onefile", "--windowed",
+         "--name", "CodexSentinelUpdater", "--distpath", helper_destination,
+         "--workpath", f"build/updater{suffix}", "--specpath", "build", "run_updater.py"],
+        cwd=root, check=True, env=environment,
+    )
+    helper = root / helper_destination / "CodexSentinelUpdater.exe"
+    subprocess.run(
         [sys.executable, "-m", "PyInstaller", "--noconfirm", "--onedir", "--windowed",
          "--name", "CodexSentinel", "--icon", str(root / "codex_sentinel/gui/assets/logo.ico"),
-         "--collect-data", "codex_sentinel", "--distpath", destination, "--workpath", work,
+         "--collect-data", "codex_sentinel", "--add-binary", f"{helper}{os.pathsep}.",
+         "--distpath", destination, "--workpath", work,
          "--specpath", "build", "run_desktop.py"], cwd=root, check=True, env=environment,
+    )
+    # Both distribution formats carry the same independent updater.
+    subprocess.run(
+        [sys.executable, "-m", "PyInstaller", "--noconfirm", "--onefile", "--windowed",
+         "--name", f"codex-sentinel-windows-x64{suffix}",
+         "--icon", str(root / "codex_sentinel/gui/assets/logo.ico"),
+         "--collect-data", "codex_sentinel", "--add-binary", f"{helper}{os.pathsep}.",
+         "--workpath", f"build/single{suffix}", "--specpath", "build", "run_sentinel.py"],
+        cwd=root, check=True, env=environment,
     )
     archive = shutil.make_archive(str(root / archive_name), "zip",
                                   root_dir=root / destination, base_dir="CodexSentinel")

@@ -26,6 +26,7 @@ DEFAULT_CONFIG = {
     "take_over_desktop": True,
     "queue_enabled": True,
     "missed_grace_seconds": 300,
+    "check_updates": True,
 }
 
 

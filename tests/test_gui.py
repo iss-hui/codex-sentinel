@@ -96,6 +96,74 @@ def test_pages_settings_and_schedule_persist(window, tmp_path):
     assert QuotaScheduler(window.manager.config_dir).task_queue == []
 
 
+def test_new_badge_opens_release_notes_without_launching_network(window, app):
+    from types import SimpleNamespace
+
+    from codex_sentinel.updates import RELEASES_URL, Release
+
+    release = Release("2.0.9", "New update features", RELEASES_URL, "update.zip", "", 1, "a" * 64, "folder")
+    assert window.new_badge.isHidden()
+    window.update_worker = SimpleNamespace(operation="check")
+    window._update_result(release)
+    window.update_worker = None
+    assert not window.new_badge.isHidden()
+    window.new_badge.click()
+    app.processEvents()
+    assert window.update_dialog.isVisible()
+    assert "2.0.9" in window.update_dialog.status.text()
+    assert "New update features" in window.update_dialog.notes.toPlainText()
+
+
+def test_update_waits_for_current_task_and_holds_new_schedules(window, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    window.dry_run = True
+    window._on_snapshot(snapshot(tmp_path))
+    pending = window.scheduler.add_task("pending", "hello", str(tmp_path), scheduled_at=time.time() - 40)
+    window.executor = SimpleNamespace(task=SimpleNamespace(status="completed"), deleteLater=lambda: None)
+    window.update_download = object()
+    starts = []
+    monkeypatch.setattr(window, "_start_update_worker", lambda *args: starts.append(args))
+    window.install_update()
+    assert window._install_requested
+    assert "等待当前任务" in window.update_dialog.status.text()
+    window._tick()
+    assert starts == [] and pending.status == "pending"
+    window.executor = None
+    window._tick()
+    assert starts == [("launch", window.update_download)]
+    assert pending.status == "pending"
+    window._install_requested = False
+
+
+def test_update_failure_keeps_window_running_and_allows_retry(window):
+    window._install_requested = True
+    window._update_failed("not enough disk space")
+    assert not window._install_requested
+    assert not window._quitting
+    assert "not enough disk space" in window.update_dialog.status.text()
+
+
+def test_update_check_setting_persists(window):
+    window.page_settings.chk_updates.setChecked(False)
+    window.page_settings.save_settings()
+    assert not ConfigManager(window.manager.config_dir).load()["check_updates"]
+
+
+def test_quit_stops_execution_even_while_update_check_is_waiting(window):
+    from threading import Event
+    from types import SimpleNamespace
+
+    stops = []
+    worker = SimpleNamespace(operation="check", cancel=Event())
+    window.update_worker = worker
+    window.executor = SimpleNamespace(stop=lambda: stops.append(True))
+    window.request_quit()
+    assert stops and worker.cancel.is_set()
+    window.executor = None
+    window.update_worker = None
+
+
 def test_recovery_is_independent_of_queue_and_always_writable(window, tmp_path, monkeypatch):
     window.dry_run = True
     now = time.time()

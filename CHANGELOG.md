@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.8] - 2026-10-19
+
+### Added
+- Show a clickable NEW badge next to the top-left logo for GitHub Release updates, with release notes, download progress, cancellation, and restart-to-update.
+- Bundle an independent updater for Windows x64 folder and single-file builds. Verify downloads, wait for the current task, preserve settings and unrelated files, and restore old files if replacement or the launch request fails.
+- Check for updates on startup and every six hours, with a Settings opt-out and manual check. Publish SHA-256 checksums with release assets.
+
 ## [2.0.7] - 2026-10-15
 
 ### Fixed

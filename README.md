@@ -34,6 +34,7 @@ Use `--buffer 30` / `--buffer 60` and `--prompt` to override desktop settings. G
 
 ## Desktop features
 
+- **Software updates:** A clickable **NEW** badge next to the top-left logo announces a new GitHub Release. View release notes, download with progress/cancellation, verify SHA-256, and restart to install. Windows x64 folder and single-file builds include an independent updater. Installation waits for the current task and holds new dispatches, replaces only application files after all app processes exit, and restores the old files if replacement or the launch request fails. Settings and unrelated files are preserved. Checks run on startup and every six hours; Settings offers an opt-out and manual check. Other platforms/source installations link to Releases. Older builds need one manual upgrade to gain this feature. The application directory must be writable, and the update cache in the Sentinel data directory must be outside it.
 - **Overview:** Two prominent workflows for conversation recovery and continuous window activation, with local quota groups, usage bars, reset dates, plan, and observation time. Missing values stay unknown; expired records are marked stale.
 - **Automatic recovery:** Opt in to independently monitor the latest quota-interrupted user chat, identified by interruption time. Recovery never enters the manual queue. The overview immediately shows its full working directory and Codex display title when a new snapshot arrives, plus state, buffered countdown, and next locally recorded reset; a separate read-only history includes execution logs. Save prompt and buffer changes explicitly; the on/off switch saves immediately, and switching off stops an active recovery. The default buffer is 30 seconds, with a 60-second shortcut.
 - **Continuous activation:** Opt in on the overview to send a fixed, lightweight message in a fresh, read-only conversation at each locally recorded five-hour reset, after the buffer. Choose the quota group, directory, and model; optionally schedule the first activation at a specific time. This mode turns off conversation recovery and runs independently of the manual queue. Each quota window is attempted once, with durable records preventing replay after a restart, failure, or cancellation. After a send it waits for a new local reset record; it never invents a reset five hours later. Exhausted weekly quota also delays activation. Activation commands temporarily disable MCP servers, connectors, and plugins without changing global Codex configuration. The automation history includes activation results and logs.
@@ -57,6 +58,8 @@ Monitoring reads only local `sessions/**/*.jsonl`, `state_5.sqlite` (read-only),
 
 Only scheduled turns and resumes invoke the official CLI, which may make its normal authentication/model/network requests. Local snapshots may be stale, particularly after account/model changes. Without a reliable model-to-quota mapping, scheduling conservatively waits for all known exhausted windows.
 
+Automatic update checks query public GitHub Release metadata independently of local monitoring; update downloads also use GitHub. No local conversations, settings, or credentials are uploaded. Downloaded packages are cached under `updates/` in the Sentinel data directory.
+
 Settings, schedules, recovery state/history (`recovery_state.json`), activation state/history (`activation_state.json`), and logs live in `~/.codex-sentinel` (`CODEX_SENTINEL_HOME` overrides it). Existing scheduled tasks retain their saved permissions and buffer; pending automatic recovery follows updated recovery settings. Old recovery queue entries move to the separate history, and only the latest eligible interruption is monitored. Corrupt files are reported, not silently overwritten.
 
 The legacy `--daemon` retains its prior desktop takeover/relaunch behavior. Use the desktop mode for the new scheduler, durable execution records, and lock waiting.
@@ -77,7 +80,7 @@ Windows build:
 .\.venv\Scripts\python.exe scripts/build_windows.py
 ```
 
-Outputs: `dist/desktop/CodexSentinel/` and `dist/CodexSentinel-windows-x64.zip`. Packaging smoke check: `CodexSentinel.exe --smoke-test` (opens then closes without monitoring or execution).
+Outputs: `dist/desktop/CodexSentinel/`, `dist/CodexSentinel-windows-x64.zip`, and `dist/codex-sentinel-windows-x64.exe`. Both distribution formats include the independent updater. Packaging smoke check: `CodexSentinel.exe --smoke-test` (opens then closes without monitoring, update checks, or execution).
 
 GitHub releases are triggered by pushing a `v<version>` tag that matches both `pyproject.toml` and `codex_sentinel/__init__.py`. Release titles, CI artifacts, and standalone downloads include the tag, for example `CodexSentinel-windows-x64-v2.0.3.zip`. Python wheels and source distributions retain their standard versioned filenames.
 

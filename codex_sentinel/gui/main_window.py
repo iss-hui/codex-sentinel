@@ -1,7 +1,8 @@
+import json
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from codex_sentinel import __version__
 from codex_sentinel.activation_monitor import ActivationMonitor
 from codex_sentinel.config import ConfigManager
 from codex_sentinel.gui.common import tr
@@ -26,9 +28,11 @@ from codex_sentinel.gui.pages.quota_timer import QuotaTimerPage
 from codex_sentinel.gui.pages.sessions import SessionsPage
 from codex_sentinel.gui.pages.settings import SettingsPage
 from codex_sentinel.gui.pages.task_queue import TaskQueuePage
+from codex_sentinel.gui.update_dialog import UpdateDialog, UpdateWorker
 from codex_sentinel.gui.workers import ExecutionWorker, MonitorWorker
 from codex_sentinel.quota_scheduler import QuotaScheduler
 from codex_sentinel.recovery_monitor import RecoveryMonitor
+from codex_sentinel.updates import installation_kind
 
 
 class MainWindow(QMainWindow):
@@ -49,6 +53,11 @@ class MainWindow(QMainWindow):
         self._quitting = False
         self._shutdown_complete = False
         self._start_workers = start_workers
+        self.update_worker = None
+        self.available_release = None
+        self.update_download = None
+        self._install_requested = False
+        self._updater_started = False
         self.dry_run = dry_run
         self.setWindowTitle("Codex Sentinel · " + tr("使用时间管理", "Usage planner"))
         self.resize(1160, 820)
@@ -57,15 +66,34 @@ class MainWindow(QMainWindow):
             self.settings["sessions_dir"], self.settings["poll_interval"], self
         )
         self._setup_ui()
+        self.update_dialog = UpdateDialog(self)
+        self.update_dialog.check_requested.connect(self.check_updates)
+        self.update_dialog.download_requested.connect(self.download_update)
+        self.update_dialog.install_requested.connect(self.install_update)
+        self.update_dialog.cancel_requested.connect(self.cancel_update_download)
+        result_file = self.manager.config_dir / "updates" / "last-result.json"
+        if result_file.exists():
+            try:
+                result = json.loads(result_file.read_text(encoding="utf-8"))
+                if isinstance(result, dict) and not result.get("success"):
+                    self.update_dialog.status.setText(tr("上次更新未完成：", "Previous update failed: ") + result.get("error", ""))
+                    self.statusBar().showMessage(self.update_dialog.status.text())
+            except (OSError, ValueError, TypeError):
+                pass
         self._connect_signals()
         self._load_settings()
         self._refresh_queue()
         self.timer = QTimer(self)
         self.timer.setInterval(1000)
         self.timer.timeout.connect(self._tick)
+        self.update_timer = QTimer(self)
+        self.update_timer.setInterval(6 * 60 * 60 * 1000)
+        self.update_timer.timeout.connect(self._auto_check_updates)
         if start_workers:
             self.monitor_worker.start()
             self.timer.start()
+            self.update_timer.start()
+            QTimer.singleShot(1500, self._auto_check_updates)
 
     def _setup_ui(self):
         central = QWidget()
@@ -74,12 +102,21 @@ class MainWindow(QMainWindow):
         sidebar = QVBoxLayout()
         sidebar.setSpacing(8)
         brand = QHBoxLayout()
-        logo = QLabel()
-        logo.setPixmap(application_icon().pixmap(32, 32))
-        brand.addWidget(logo)
-        name = QLabel("Sentinel")
-        name.setStyleSheet("font-size: 19px; font-weight: 600; color: #f1f3fa;")
-        brand.addWidget(name)
+        self.brand_button = QPushButton("Sentinel")
+        self.brand_button.setIcon(application_icon())
+        self.brand_button.setIconSize(QSize(32, 32))
+        self.brand_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.brand_button.setToolTip(tr(f"当前版本 v{__version__} · 检查更新", f"Version v{__version__} · Check for updates"))
+        self.brand_button.setStyleSheet("QPushButton { font-size: 19px; font-weight: 600; color: #f1f3fa; border: none; padding: 0; background: transparent; text-align: left; }")
+        self.brand_button.clicked.connect(self.show_updates)
+        brand.addWidget(self.brand_button)
+        self.new_badge = QPushButton("NEW")
+        self.new_badge.setFixedSize(42, 22)
+        self.new_badge.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.new_badge.setStyleSheet("QPushButton { background: #71e2b5; color: #122d29; font-size: 10px; font-weight: 800; border: none; border-radius: 7px; padding: 0; } QPushButton:hover { background: #9bf0cf; }")
+        self.new_badge.clicked.connect(self.show_updates)
+        self.new_badge.hide()
+        brand.addWidget(self.new_badge)
         brand.addStretch()
         sidebar.addLayout(brand)
         subtitle = QLabel(tr("Codex 使用时间管理", "Codex usage planner"))
@@ -138,6 +175,7 @@ class MainWindow(QMainWindow):
         self.page_dashboard.stop_requested.connect(self.stop_execution)
         self.page_dashboard.history_requested.connect(self.show_recovery_history)
         self.page_settings.settings_changed.connect(self._save_settings)
+        self.page_settings.btn_updates.clicked.connect(self.show_updates)
         self.page_quota.task_requested.connect(self._save_task)
         self.page_tasks.add_requested.connect(
             lambda: (self.page_quota.reset_form(), self.switch_page(1))
@@ -322,6 +360,10 @@ class MainWindow(QMainWindow):
     def _tick(self):
         self.page_dashboard.render_limits()
         if self._quitting:
+            return
+        if self._install_requested:
+            if self.executor is None:
+                self._begin_update()
             return
         now = time.time()
         if self.tray and self.executor is None:
@@ -513,6 +555,97 @@ class MainWindow(QMainWindow):
         self.monitor_worker.refresh()
         if self._quitting:
             QTimer.singleShot(0, self.request_quit)
+        elif self._install_requested:
+            QTimer.singleShot(0, self._begin_update)
+
+    def show_updates(self):
+        self.update_dialog.show()
+        self.update_dialog.raise_()
+        self.update_dialog.activateWindow()
+        if not self.available_release and not self.update_worker:
+            self.check_updates()
+
+    def _auto_check_updates(self):
+        if self.settings["check_updates"] and not self._quitting:
+            self.check_updates()
+
+    def check_updates(self):
+        if self.update_worker or self._quitting or self.update_download:
+            return
+        self._start_update_worker("check", None)
+
+    def download_update(self):
+        if self.available_release and installation_kind() and not self.update_worker and not self._quitting:
+            self._start_update_worker("download", self.available_release)
+
+    def cancel_update_download(self):
+        if self.update_worker and self.update_worker.operation == "download":
+            self.update_worker.cancel.set()
+            self.update_dialog.status.setText(tr("正在取消下载…", "Cancelling download…"))
+
+    def install_update(self):
+        if not self.update_download or self.update_worker or self._quitting:
+            return
+        self._install_requested = True
+        self.update_dialog.install.setEnabled(False)
+        self.update_dialog.check.setEnabled(False)
+        self.update_dialog.download.setEnabled(False)
+        if self.executor is not None:
+            self.update_dialog.status.setText(tr(
+                "等待当前任务结束后重启更新；期间不启动新任务。",
+                "Will restart after the current task finishes; new tasks are on hold.",
+            ))
+        else:
+            self._begin_update()
+
+    def _begin_update(self):
+        if self._install_requested and not self.executor and not self.update_worker and not self._quitting:
+            self._start_update_worker("launch", self.update_download)
+
+    def _start_update_worker(self, operation, value):
+        worker = UpdateWorker(operation, value, self.manager.config_dir, self)
+        self.update_worker = worker
+        self.update_dialog.set_busy(operation)
+        worker.progress.connect(self.update_dialog.on_progress)
+        worker.completed.connect(self._update_result)
+        worker.failed.connect(self._update_failed)
+        worker.finished.connect(self._update_worker_finished)
+        worker.start()
+
+    def _update_result(self, result):
+        operation = self.update_worker.operation
+        if operation == "check":
+            self.available_release = result
+            self.update_dialog.set_release(result)
+            self.new_badge.setVisible(result is not None)
+            if result:
+                self.new_badge.setToolTip(tr(f"新版本 v{result.version} · 点击更新", f"Version v{result.version} available · Click to update"))
+        elif operation == "download":
+            self.update_download = result
+            self.update_dialog.download.hide()
+            self.update_dialog.install.show()
+            self.update_dialog.status.setText(tr(
+                "下载完成，校验通过。点击“重启更新”安装新版。",
+                "Download verified. Click Restart and update to install.",
+            ))
+        else:
+            self._updater_started = True
+
+    def _update_failed(self, message):
+        self._install_requested = False
+        self.update_dialog.status.setText(tr("更新未完成：", "Update could not complete: ") + message)
+
+    def _update_worker_finished(self):
+        worker = self.update_worker
+        if worker.cancel.is_set() and not self._quitting:
+            self.update_dialog.status.setText(tr("已取消下载，可重新下载。", "Download cancelled. You can try again."))
+        worker.deleteLater()
+        self.update_worker = None
+        self.update_dialog.set_busy(None)
+        if self.update_download:
+            self.update_dialog.check.setEnabled(False)
+        if self._updater_started or self._quitting:
+            QTimer.singleShot(0, self.request_quit)
 
     def _refresh_queue(self):
         self.page_tasks.refresh_table(self.scheduler.task_queue)
@@ -532,12 +665,19 @@ class MainWindow(QMainWindow):
     def request_quit(self):
         self._quitting = True
         self.timer.stop()
+        self.update_timer.stop()
         self.monitor_worker.stop()
         if self.executor:
             self.executor.stop()
             self.statusBar().showMessage(
                 tr("正在停止当前执行…", "Stopping current execution…")
             )
+        if self.update_worker:
+            if self.update_worker.operation != "launch":
+                self.update_worker.cancel.set()
+            QTimer.singleShot(100, self.request_quit)
+            return
+        if self.executor:
             return
         if self.monitor_worker.isRunning():
             QTimer.singleShot(100, self.request_quit)

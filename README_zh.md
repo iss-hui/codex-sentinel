@@ -35,6 +35,14 @@ codex-sentinel --status        原有单次限额检查
 
 ## 使用
 
+### 软件更新
+
+Windows x64 打包版支持软件内更新。启动后及运行期间每六小时检查一次 GitHub Release，发现新版后在左上角图标旁显示 **NEW**。点击图标或 NEW 查看更新说明、下载进度；也可在“设置”中手动检查或关闭自动检查。
+
+下载并通过 SHA-256 校验后，点击“重启更新”。如果有任务正在执行，会等当前任务结束并暂停派发新任务；独立更新器准备完成后，主程序完全退出，再替换 EXE 和依赖并重新启动。文件替换或启动请求失败时恢复旧文件。更新保留独立的数据目录和应用目录内的无关文件。目录版和单文件 EXE 均受支持；其他平台和源码运行通过发布页手动更新。
+
+旧版本需要先手动安装一次带更新功能的版本。更新包缓存在 Sentinel 数据目录的 `updates/` 下；该目录应位于应用安装目录之外，应用目录需要当前用户可写。下载失败不影响现有程序，可重新下载。
+
 ### 总览
 
 - 显示本地记录的限额分组、五小时主窗口、周/次窗口、已用比例、重置日期时间、记录时间和套餐。
@@ -86,6 +94,7 @@ codex-sentinel --status        原有单次限额检查
 - 仅读取 `CODEX_HOME`（默认 `~/.codex`）中的 `sessions/**/*.jsonl`、`state_5.sqlite`、`.codex-global-state.json`（项目归属与排序）和 `models_cache.json`。SQLite 使用只读连接，字段兼容检测。增量扫描最近 100 个日志、最近 100 个可见用户聊天，并持续跟踪当前恢复目标；对话列表读取完整的本地未归档交互会话索引。
 - 对话选择按 Codex 显示标题和项目分组，排除 Guardian review、子代理等内部日志。项目内按用户活动时间排列，兼容保存的手动顺序。未扫描到日志的旧对话状态保持“未知”。执行详情同时显示目标标题、目标会话 ID 和日志中的实际启动 ID，便于区分恢复目标与工具输出中提及的其他对话。
 - 监控默认每 5 秒扫描本地文件，增量读取新增日志；不调用官方限额查询接口，不读取或展示认证凭据。
+- 开启自动更新检查时，仅向 GitHub 查询公开版本信息；下载更新也通过 GitHub。不上传本地对话、设置或认证信息。检查频率独立于本地扫描间隔。
 - 仅执行预约或恢复时调用官方 `codex exec` / `codex exec resume`。该 CLI 自身可能执行其正常的认证、模型和网络请求。
 - 本地记录可能滞后，切换账号或模型后尤其如此。没有可靠的模型限额映射时，调度会保守等待所有已知耗尽窗口。
 - 设置、队列、恢复状态与历史（`recovery_state.json`、`activation_state.json`）及日志保存到 `~/.codex-sentinel`，可通过 `CODEX_SENTINEL_HOME` 指定独立目录。不会写入 Codex 数据库。
@@ -100,7 +109,7 @@ codex-sentinel --status        原有单次限额检查
 .\.venv\Scripts\python.exe scripts/build_windows.py
 ```
 
-图形测试使用 Qt offscreen 和隔离数据，不调用真实模型。`scripts/render_gui.py` 使用示例数据生成五个页面截图。Windows 包输出为 `dist/desktop/CodexSentinel/`，压缩包为 `dist/CodexSentinel-windows-x64.zip`。
+图形测试使用 Qt offscreen 和隔离数据，不调用真实模型。`scripts/render_gui.py` 使用示例数据生成五个页面截图。Windows 构建输出为 `dist/desktop/CodexSentinel/`、`dist/CodexSentinel-windows-x64.zip` 和 `dist/codex-sentinel-windows-x64.exe`，两种分发格式均包含独立更新器。
 
 原有 `--daemon` 仍为旧实现。新增预约、日志去重、可配置的桌面交接与执行进程组清理由 GUI 提供。建议使用桌面模式。
 

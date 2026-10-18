@@ -74,8 +74,8 @@ jobs:
 
       - name: Compile Windows EXE
         run: |
-          pyinstaller --clean --noconfirm --onefile --name "codex-sentinel-windows-x64-${env:RELEASE_TAG}" --windowed --icon codex_sentinel/gui/assets/logo.ico --collect-data codex_sentinel run_sentinel.py
           python scripts/build_windows.py
+          Move-Item -LiteralPath "dist/codex-sentinel-windows-x64.exe" -Destination "dist/codex-sentinel-windows-x64-${env:RELEASE_TAG}.exe"
           Move-Item -LiteralPath "dist/CodexSentinel-windows-x64.zip" -Destination "dist/CodexSentinel-windows-x64-${env:RELEASE_TAG}.zip"
 
       - name: Upload Windows EXE
@@ -171,6 +171,23 @@ jobs:
         with:
           name: macos-bin-${{ env.RELEASE_TAG }}
           path: release-assets
+
+      - name: Generate update checksums
+        shell: python
+        run: |
+          import hashlib
+          from pathlib import Path
+
+          directory = Path("release-assets")
+          lines = []
+          for asset in sorted(directory.iterdir()):
+              if asset.is_file():
+                  digest = hashlib.sha256()
+                  with asset.open("rb") as stream:
+                      for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                          digest.update(chunk)
+                  lines.append(f"{digest.hexdigest()}  {asset.name}\n")
+          (directory / "SHA256SUMS.txt").write_text("".join(lines), encoding="utf-8")
 
       - name: Publish Release with All Assets
         uses: softprops/action-gh-release@v2

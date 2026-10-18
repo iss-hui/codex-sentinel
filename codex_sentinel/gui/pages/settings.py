@@ -51,6 +51,7 @@ class SettingsPage(QWidget):
             ("chk_minimize", tr("关闭窗口时留在托盘", "Keep running in tray on close")),
             ("chk_notifs", tr("显示执行结果通知", "Show execution notifications")),
             ("chk_sound", tr("执行结束提示音", "Sound on completion")),
+            ("chk_updates", tr("自动检查软件更新（连接 GitHub）", "Automatically check for updates (connects to GitHub)")),
         ):
             widget = QCheckBox(label)
             setattr(self, name, widget)
@@ -90,6 +91,8 @@ class SettingsPage(QWidget):
         buttons.addWidget(save)
         buttons.addWidget(reset)
         layout.addLayout(buttons)
+        self.btn_updates = QPushButton(tr("检查软件更新", "Check for software updates"))
+        layout.addWidget(self.btn_updates)
         layout.addStretch()
 
     def _browse_sessions(self):
@@ -112,6 +115,7 @@ class SettingsPage(QWidget):
         self.chk_notifs.setChecked(config["show_notifications"])
         self.chk_sound.setChecked(config["play_sound"])
         self.chk_take_over.setChecked(config["take_over_desktop"])
+        self.chk_updates.setChecked(config["check_updates"])
         self.txt_sessions_dir.setText(config["sessions_dir"])
         self.txt_cli_path.setText(config["cli_path"])
 
@@ -125,6 +129,7 @@ class SettingsPage(QWidget):
                 "show_notifications": self.chk_notifs.isChecked(),
                 "play_sound": self.chk_sound.isChecked(),
                 "take_over_desktop": self.chk_take_over.isChecked(),
+                "check_updates": self.chk_updates.isChecked(),
                 "sessions_dir": self.txt_sessions_dir.text(),
                 "cli_path": self.txt_cli_path.text(),
             }
