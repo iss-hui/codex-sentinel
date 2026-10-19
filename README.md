@@ -1,89 +1,303 @@
-<img src="codex_sentinel/gui/assets/logo.png" width="96" height="96" alt="Codex Sentinel logo">
+<div align="center">
+  <img src="codex_sentinel/gui/assets/logo.png" alt="Codex Sentinel logo" width="88" height="88">
+  <h1>Codex Sentinel</h1>
+  <p><strong>A desktop home for Codex quota, scheduled work, and interrupted conversations.</strong></p>
+  <p>See your next window. Plan the next turn. Pick up where you left off.</p>
+  <p>
+    <a href="https://github.com/iss-hui/codex-sentinel/releases/latest"><img src="https://img.shields.io/github/v/release/iss-hui/codex-sentinel?style=flat-square&amp;color=176cce" alt="Latest release"></a>
+    <a href="https://github.com/iss-hui/codex-sentinel/actions/workflows/release.yml"><img src="https://github.com/iss-hui/codex-sentinel/actions/workflows/release.yml/badge.svg" alt="Release build"></a>
+    <a href="pyproject.toml"><img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square" alt="Python 3.10 or newer"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-176cce?style=flat-square" alt="MIT license"></a>
+  </p>
+  <p><strong>English</strong> · <a href="README_zh.md">简体中文</a></p>
+  <p><a href="https://github.com/iss-hui/codex-sentinel/releases/latest">Download</a> · <a href="#quick-start">Quick start</a> · <a href="#product-tour">Product tour</a> · <a href="#how-it-works">How it works</a> · <a href="#development">Development</a></p>
+</div>
 
-# Codex Sentinel 2.0
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/en/overview-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/en/overview-light.png">
+  <img alt="Codex Sentinel overview: recovery workspace, next reset, and local quota records" src="docs/assets/readme/en/overview-light.png" width="1160">
+</picture>
 
-A local-first desktop quota dashboard, scheduled turn launcher, and conversation resumer for Codex.
+*Actual PySide6 desktop UI, captured with synthetic local data. Screenshots throughout this guide include dark and light variants and follow your GitHub theme. [Screenshot sources and reproduction](docs/assets/readme/README.md).*
 
-[中文说明](README_zh.md) · [Implementation notes](docs/desktop-completion.md)
+Codex Sentinel brings locally recorded quota, conversation recovery, and scheduled CLI turns into one native desktop application. It is built for developers who want to keep track of long-running Codex work, prepare a turn before their next work session, and inspect what happened afterward.
 
-![Desktop overview with sample data](docs/assets/desktop_dashboard.png)
+The interface has five focused pages, a system tray, English and Chinese translations, and persistent dark, light, and system appearance settings. Execution uses your installed official Codex CLI and existing sign-in.
 
-## Run
+> Quota resets are controlled by the server. Sentinel reads local observations and can schedule a turn after a recorded reset; it cannot reset quota, bypass a limit, or guarantee that a message starts a new five-hour window.
 
-On Windows, extract `CodexSentinel-windows-x64-v<version>.zip` and open `CodexSentinel.exe`. Keep its `_internal` folder alongside it. Install and sign in to the official Codex CLI first; Sentinel detects it locally or accepts a path in Settings.
+## Highlights
 
-From source (Python 3.10+):
+| Capability | What you get |
+| --- | --- |
+| **Local quota overview** | Five-hour and weekly usage, recorded reset times, observation age, and quota groups. Missing or stale values stay explicit. |
+| **Conversation recovery** | Opt in to resume the latest quota-interrupted user conversation after the known reset and buffer. Dedicated history keeps results and logs together. |
+| **Continuous activation** | Send a lightweight turn in a fresh read-only conversation at each newly recorded window, with a choice of directory, model, and optional first activation time. |
+| **Window planner** | Schedule a message or task by date, the next recorded reset, or a lead time before your planned work start. |
+| **Execution queue** | Edit, reorder, reschedule, pause, stop, and inspect persisted tasks with per-task permissions and raw CLI logs. |
+| **Native desktop workflow** | Search local conversations, switch themes instantly, keep monitoring in the tray, and update supported Windows builds from the app. |
 
-```sh
-pip install -e '.[dev]'
-python run_desktop.py
+## Quick start
+
+### Download a release
+
+Get the latest package from **[GitHub Releases](https://github.com/iss-hui/codex-sentinel/releases/latest)**. Every release also includes `SHA256SUMS.txt` for verifying downloaded assets.
+
+| Platform | Asset | Start |
+| --- | --- | --- |
+| **Windows x64 — folder build** | `CodexSentinel-windows-x64-v<version>.zip` | Extract the entire archive and open `CodexSentinel.exe`. Keep `_internal` beside it. |
+| **Windows x64 — single file** | `codex-sentinel-windows-x64-v<version>.exe` | Run the downloaded executable. |
+| **Linux x64** | `codex-sentinel-linux-x64-v<version>` | Make the binary executable, then run it in a graphical session. |
+| **macOS** | `codex-sentinel-macos-v<version>` | Use the binary provided by the release, or run from source. |
+| **Python** | Versioned `.whl` and `.tar.gz` | Install the package or follow the source instructions below. |
+
+Install and sign in to the official Codex CLI first. Sentinel detects it locally; you can also select its executable in **Settings**. Packaged builds do not require a separate Python installation; running from source requires Python 3.10 or newer.
+
+### Your first session
+
+1. Open **Settings**, confirm the Codex CLI and local data directories, and choose your language and theme.
+2. Check **Overview** for local quota observations and their recorded reset times. An unknown value means no usable local record was found.
+3. Enable **conversation recovery** to continue a quota-interrupted chat, or choose **continuous activation** for lightweight turns in fresh chats. Both are opt-in and mutually exclusive.
+4. Use **Window planner** for manual schedules, then follow their progress and logs in **Execution queue**. Review the desktop takeover setting before enabling execution: it is on by default and can interrupt work currently running in Codex Desktop.
+
+### Run from source
+
+On Windows, using PowerShell:
+
+```powershell
+git clone https://github.com/iss-hui/codex-sentinel.git
+cd codex-sentinel
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\python.exe run_desktop.py
 ```
 
-Installed commands:
+<details>
+<summary>Linux / macOS source setup</summary>
 
 ```sh
-codex-sentinel                     # Desktop by default
+git clone https://github.com/iss-hui/codex-sentinel.git
+cd codex-sentinel
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
+.venv/bin/python run_desktop.py
+```
+
+</details>
+
+Installed entry points:
+
+```sh
+codex-sentinel                     # Desktop application
 codex-sentinel-gui                 # Windowed entry point
-codex-sentinel --gui --lang en
-codex-sentinel --gui --dry-run      # Simulate without sending messages
+codex-sentinel --gui --lang en     # English interface
+codex-sentinel --gui --dry-run     # Simulate execution without sending turns
 codex-sentinel --daemon            # Legacy headless daemon
-codex-sentinel --status            # Legacy one-time status check
+codex-sentinel --status            # Legacy one-time quota check
 ```
 
-Use `--buffer 30` / `--buffer 60` and `--prompt` to override desktop settings. GUI startup errors never silently fall back to a daemon that sends messages. `--no-relaunch` only affects the legacy daemon.
+`--buffer 30`, `--buffer 60`, and `--prompt` override the corresponding desktop settings. GUI startup errors are reported rather than falling back to a message-sending daemon. `--no-relaunch` applies only to the legacy daemon; desktop takeover and reopening are configured in Settings.
 
-## Desktop features
+## Product tour
 
-- **Appearance:** Neutral dark and light themes across all five native pages and dialogs. Switch immediately in the top-right toolbar, or choose Dark / Light / System in Settings. The choice persists across restarts without clearing unsaved forms or selected log text. Existing configurations default to dark. Narrow windows stack overview panels and retain complete table columns with internal scrolling. Existing executable builds need rebuilding to include the new UI.
+### Overview · choose the next action
 
-- **Software updates:** A clickable **NEW** badge next to the top-left logo announces a new GitHub Release. View release notes, download with progress/cancellation, verify SHA-256, and restart to install. Windows x64 folder and single-file builds include an independent updater. Installation waits for the current task and holds new dispatches, replaces only application files after all app processes exit, and restores the old files if replacement or the launch request fails. Settings and unrelated files are preserved. Checks run on startup and every six hours; Settings offers an opt-out and manual check. Other platforms/source installations link to Releases. Older builds need one manual upgrade to gain this feature. The application directory must be writable, and the update cache in the Sentinel data directory must be outside it.
-- **Overview:** Two prominent workflows for conversation recovery and continuous window activation, with local quota groups, usage bars, reset dates, plan, and observation time. Missing values stay unknown; expired records are marked stale.
-- **Automatic recovery:** Opt in to independently monitor the latest quota-interrupted user chat, identified by interruption time. Recovery never enters the manual queue. The overview immediately shows its full working directory and Codex display title when a new snapshot arrives, plus state, buffered countdown, and next locally recorded reset; a separate read-only history includes execution logs. Save prompt and buffer changes explicitly; the on/off switch saves immediately, and switching off stops an active recovery. The default buffer is 30 seconds, with a 60-second shortcut.
-- **Continuous activation:** Opt in on the overview to send a fixed, lightweight message in a fresh, read-only conversation at each locally recorded five-hour reset, after the buffer. Choose the quota group, directory, and model; optionally schedule the first activation at a specific time. This mode turns off conversation recovery and runs independently of the manual queue. Each quota window is attempted once, with durable records preventing replay after a restart, failure, or cancellation. After a send it waits for a new local reset record; it never invents a reset five hours later. Exhausted weekly quota also delays activation. Activation commands temporarily disable MCP servers, connectors, and plugins without changing global Codex configuration. The automation history includes activation results and logs.
-- **Recovery permissions:** Automatic recovery always requests workspace write access with Codex automatic approval reviews (`codex exec --approve-for-me`). Scheduled tasks remain read-only by default, with permissions chosen for each task. Writable execution requires a supporting CLI and fails before closing the desktop if unsupported. Approval rejection or unavailable quota can still interrupt execution; each log records the requested policy.
-- **Window planner:** Choose a cached or manually entered model, existing/new conversation, working directory, message/task, and full date/time. Schedule at the next locally recorded five-hour reset, or send 2–3 hours before your planned work start.
-- **Task queue:** Persist, edit, reorder, delete, reschedule, pause, stop, and inspect scheduled tasks and their logs. Log details show execution status and completion time above raw output; completed runs may still contain auxiliary service errors or warnings. Queue pause does not pause automatic recovery or continuous activation. A shared executor finishes the current task before giving due recovery priority. Exhausted weekly quota also delays execution. By default, a busy target triggers closing Codex Desktop (interrupting its active tasks), waiting for the writer lock, running the task, cleaning up the CLI process group, then reopening the desktop. Disable this option in Settings to wait for the desktop instead.
-- **Local conversations:** Read the full local index of unarchived interactive chats, use Codex display titles, and group them by saved project. Internal review/subagent logs are excluded from the picker. Search titles, models, directories, recorded token totals, and turn states.
-- **Tray:** Closing hides the app when a system tray is available. Quit cancels the active child process and exits cleanly. Only one desktop instance runs per Sentinel data directory.
+The overview above pairs the recovery or activation workspace with local quota records. The selected conversation, complete working directory, next eligible time, and buffered countdown stay visible together. Narrow windows stack these panels; tables retain their columns with internal scrolling.
 
-![Continuous activation with sample data](docs/assets/desktop_activation.png)
+| Workflow | Target and trigger | Execution policy |
+| --- | --- | --- |
+| **Automatic recovery** | Latest eligible quota interruption, selected by interruption time; waits for known exhausted windows and the buffer. | Workspace write with Codex automatic approval reviews (`codex exec --approve-for-me`). |
+| **Continuous activation** | A fresh chat at each newly recorded five-hour reset; optional first activation date and time. Weekly limits still apply. | Read-only lightweight turn; MCP servers, connectors, and plugins are disabled for this invocation only. |
+| **Manual schedules** | A new or existing chat at a time selected in the planner. | Read-only by default; permission policy is chosen for each task. |
 
-A scheduled message **does not guarantee a new five-hour window**. The server controls quota resets; Sentinel cannot reset an active window or skip a limit. It sends the chosen prompt after the recorded deadline plus a buffer and waits for new local records.
+Recovery and activation run independently of the manual queue switch, but share one executor with scheduled tasks. Due recovery takes priority after the current task finishes. Recovery enable/disable saves immediately; turning it off also stops an active recovery. Prompt and buffer edits require saving.
 
-The computer must be awake and the app running. Manual schedules have a configurable five-minute grace period, after which they need explicit rescheduling. Failed or interrupted manual tasks never automatically replay. Automatic recovery rechecks the latest local interruption after waking, waits for every exhausted window and the buffer, and continues watching after completion. A renewed quota error waits for a new reset record; transient network errors retry at most twice, after 30 and 60 seconds. Successful, cancelled, approval-failed, or crash-interrupted recovery is not replayed for the same interruption. Inspect failed logs because partial work may have occurred. Lightweight messages time out after 120 seconds; tasks after one hour.
+<details>
+<summary>View continuous activation and recovery settings</summary>
 
-Before continuous activation, the MCP configuration query allows 30 seconds per attempt and retries once on timeout. If both attempts time out, activation fails before sending a message. Retrying this query does not resend an activation message.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/en/activation-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/en/activation-light.png">
+  <img alt="Continuous activation with quota group, directory, model, first activation time, and execution history" src="docs/assets/readme/en/activation-light.png" width="1160">
+</picture>
 
-## Data and network
+Choose the quota group, working directory, and model. Each recorded window is attempted once, and durable state prevents replay after restart, failure, or cancellation. After sending, Sentinel waits for a new local reset observation; it does not assume another reset five hours later.
 
-Monitoring reads only local `sessions/**/*.jsonl`, `state_5.sqlite` (read-only), `.codex-global-state.json` (project membership/order), and `models_cache.json` beneath `CODEX_HOME` (default `~/.codex`). Incremental scans cover the latest 100 rollouts, the latest 100 visible user conversations, and the active recovery target, every five seconds by default. The conversation picker reads the full index. Older unscanned turn states remain unknown. Sentinel makes no account/rate-limit polling requests and does not inspect credentials.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/en/recovery-settings-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/en/recovery-settings-light.png">
+  <img alt="Recovery settings with editable continuation prompt, buffer, and permission explanation" src="docs/assets/readme/en/recovery-settings-light.png" width="760">
+</picture>
 
-Only scheduled turns and resumes invoke the official CLI, which may make its normal authentication/model/network requests. Local snapshots may be stale, particularly after account/model changes. Without a reliable model-to-quota mapping, scheduling conservatively waits for all known exhausted windows.
+Set the continuation prompt and buffer, which defaults to 30 seconds and includes a 60-second shortcut. Writable execution requires a CLI version supporting automatic approval reviews. Unsupported execution fails before closing Codex Desktop; a review rejection can still stop a run.
 
-Automatic update checks query public GitHub Release metadata independently of local monitoring; update downloads also use GitHub. No local conversations, settings, or credentials are uploaded. Downloaded packages are cached under `updates/` in the Sentinel data directory.
+</details>
 
-Settings, schedules, recovery state/history (`recovery_state.json`), activation state/history (`activation_state.json`), and logs live in `~/.codex-sentinel` (`CODEX_SENTINEL_HOME` overrides it). Existing scheduled tasks retain their saved permissions and buffer; pending automatic recovery follows updated recovery settings. Old recovery queue entries move to the separate history, and only the latest eligible interruption is monitored. Corrupt files are reported, not silently overwritten.
+### Window planner · prepare a turn before you need it
 
-The legacy `--daemon` retains its prior desktop takeover/relaunch behavior. Use the desktop mode for the new scheduler, durable execution records, and lock waiting.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/en/planner-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/en/planner-light.png">
+  <img alt="Window planner with task configuration on the left and scheduling controls on the right" src="docs/assets/readme/en/planner-light.png" width="1160">
+</picture>
 
-## Test and build
+Choose an existing or new conversation, directory, cached or manually entered model, and message or task. Schedule a full date and time, use the next locally recorded five-hour reset, or send two to three hours before your planned work start.
+
+The earliest eligible time is `max(scheduled time, known exhausted-window resets) + buffer`. A busy conversation may delay execution further while Sentinel waits for its writer lock. When the model-to-quota mapping is uncertain, scheduling conservatively waits for all known exhausted windows.
+
+### Execution queue · inspect every scheduled run
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/en/queue-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/en/queue-light.png">
+  <img alt="Execution queue with pending, completed, failed, and missed tasks and a selected task detail panel" src="docs/assets/readme/en/queue-light.png" width="1160">
+</picture>
+
+Edit, reorder, delete, reschedule, pause dispatch, or stop a running task. The detail panel exposes permissions, target, status, completion time, and raw CLI output. Queue pause lets the current task finish and does not disable recovery or activation.
+
+Completed, failed, interrupted, and cancelled manual tasks are not automatically replayed. Inspect failed logs before rescheduling: a failed run may already have changed files. A completed run can still contain auxiliary service warnings; the execution status is shown separately from raw output.
+
+<details>
+<summary>View the separate automation history and execution logs</summary>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/en/history-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/en/history-light.png">
+  <img alt="Read-only recovery and activation history with execution details and original CLI logs" src="docs/assets/readme/en/history-light.png" width="1000">
+</picture>
+
+Recovery and activation records live in their own read-only history rather than the manual queue. Select a record to inspect its result, conversation, permissions, completion time, and log.
+
+</details>
+
+### Local conversations · find the right context
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/en/sessions-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/en/sessions-light.png">
+  <img alt="Local conversations grouped by project with search, model, token totals, state, and full conversation details" src="docs/assets/readme/en/sessions-light.png" width="1160">
+</picture>
+
+Browse the full local index of unarchived interactive chats, grouped by the projects and display titles recorded by Codex. Search titles, models, directories, recorded token totals, and turn states. Select a row to read its full conversation ID and directory. Internal review and subagent logs are excluded from the picker.
+
+### Settings · make the desktop fit your workflow
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/en/settings-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/en/settings-light.png">
+  <img alt="Settings with execution preferences, CLI and data paths, language, appearance, and software updates" src="docs/assets/readme/en/settings-light.png" width="1160">
+</picture>
+
+Manage CLI discovery, local data paths, execution timing, desktop takeover, update checks, language, and appearance. Use the toolbar for an immediate dark/light switch, or select Dark / Light / System in Settings. Theme changes persist without clearing unsaved forms or log selections; language changes take effect after restart. Existing configurations default to dark.
+
+<details>
+<summary>View the update window and system tray</summary>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/en/updates-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/en/updates-light.png">
+  <img alt="Software update dialog showing the installed version, release notes area, and update controls" src="docs/assets/readme/en/updates-light.png" width="580">
+</picture>
+
+Windows x64 folder and single-file builds support in-app updates. A **NEW** badge beside the logo opens release notes and download controls. Checks run on startup and every six hours, with manual checks and an opt-out in Settings.
+
+Downloads support progress and cancellation and are verified with SHA-256. Restart-to-update waits for the current task, holds new dispatches, and starts an independent updater after the app has exited. Replacement or launch-request failure restores old files. User data and unrelated files are preserved. The application directory must be writable, and the update cache must be outside it. Older builds need one manual upgrade; other platforms and source installations use the release page.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/en/tray-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/readme/en/tray-light.png">
+  <img alt="System tray menu with show window, automatic recovery, queue pause, and quit actions" src="docs/assets/readme/en/tray-light.png" width="350">
+</picture>
+
+Closing the window hides it when a system tray is available. Quit cancels owned child processes and exits cleanly. Only one desktop instance runs per Sentinel data directory.
+
+</details>
+
+## How it works
+
+Sentinel is a Python application with a native **PySide6 / Qt** interface. Local readers build a snapshot for the dashboard and planners; recovery, activation, and the queue share a single CLI executor.
+
+```mermaid
+flowchart LR
+    A[Local Codex records] --> B[Read-only snapshot]
+    B --> C[Quota and conversations]
+    B --> D[Recovery and activation]
+    E[Manual planner] --> F[Persisted queue]
+    D --> G[Shared executor]
+    F --> G
+    G --> H[Official Codex CLI]
+    G --> I[Local history and logs]
+```
+
+### Desktop takeover and permissions
+
+By default, when a target is busy, Sentinel closes the recognized Codex Desktop process tree, waits for the conversation writer lock, executes the turn, cleans up its own CLI process group, and reopens the desktop. **This can interrupt tasks running in Codex Desktop.** Disable takeover in Settings to wait for the desktop instead.
+
+Windows execution uses a Job Object for child-process cleanup. A cleanup failure pauses recovery, activation, and queue dispatch to avoid overlapping execution. Saved manual tasks retain their permissions and buffers; pending automatic recovery follows the current recovery settings.
+
+### Data and network boundaries
+
+| Data | Location and behavior |
+| --- | --- |
+| **Codex records** | `CODEX_HOME`, default `~/.codex`: `sessions/**/*.jsonl`, read-only `state_5.sqlite`, `.codex-global-state.json` project metadata, and `models_cache.json`. Sentinel does not write the Codex database or inspect credentials. |
+| **Monitoring** | Incremental scans every five seconds by default: latest 100 rollouts, latest 100 visible user chats, and the current recovery target. The picker reads the full unarchived index; older unscanned turn states remain unknown. |
+| **Sentinel state** | `CODEX_SENTINEL_HOME`, default `~/.codex-sentinel`: settings, queue, `recovery_state.json`, `activation_state.json`, histories, and execution logs. Corrupt state files are reported rather than silently overwritten. |
+| **Execution** | Scheduled turns, recovery, and activation invoke the official CLI, which makes its normal authentication, model, and network requests. Local quota monitoring makes no account or rate-limit polling requests. |
+| **Updates** | Optional checks and package downloads access public GitHub Releases. Local conversations, settings, and credentials are not uploaded. Downloaded packages are cached under the Sentinel data directory's `updates/`. |
+
+<details>
+<summary>Timing, retries, missed runs, and legacy behavior</summary>
+
+| Situation | Behavior |
+| --- | --- |
+| **Computer sleeping or app stopped** | Execution requires the computer to be awake and Sentinel running. Manual schedules default to a five-minute grace period, then become missed and require explicit rescheduling. |
+| **Recovery after wake** | Re-read the latest interruption, wait for every known exhausted window plus the buffer, and continue monitoring afterward. The manual missed-run grace does not apply to recovery. |
+| **Another quota error** | Wait for a newly recorded reset. Missing reset information stays unknown; Sentinel does not infer a new window. Local observations may be stale after account or model changes. |
+| **Transient recovery network errors** | Retry at most twice, after 30 and 60 seconds. Successful, cancelled, approval-failed, and crash-interrupted recovery is not replayed for the same interruption. |
+| **Execution timeouts** | Lightweight messages time out after 120 seconds; tasks after one hour. |
+| **Activation preflight** | The MCP configuration query has a 30-second timeout and one retry on timeout. Repeated timeouts stop before sending; a query retry does not resend the activation turn. |
+| **Older recovery queue entries** | Migrated into the separate automation history; only the latest eligible interruption is monitored. |
+| **Legacy daemon** | Retains its prior takeover/relaunch behavior. Use desktop mode for the scheduler, durable execution records, and writer-lock waiting. |
+
+</details>
+
+## Development
+
+Create a virtual environment using the source setup above, then install the development extras:
 
 ```sh
-pytest -q
+python -m pip install -e ".[dev]"
+python -m pytest -q
 python scripts/render_gui.py
+python scripts/render_readme.py
 ```
 
-Tests use isolated fixtures and fake executors; no real model requests. The renderer writes all five pages using synthetic data.
+Use your virtual environment's Python for these commands. Tests use isolated fixtures and fake executors; they do not make real model requests. The renderers capture the actual UI with synthetic data. `render_readme.py` produces both languages, both themes, all five pages, and the supporting dialogs. See [screenshot documentation](docs/assets/readme/README.md).
 
-Windows build:
+### Windows packaging
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install pyinstaller
 .\.venv\Scripts\python.exe scripts/build_windows.py
 ```
 
-Outputs: `dist/desktop/CodexSentinel/`, `dist/CodexSentinel-windows-x64.zip`, and `dist/codex-sentinel-windows-x64.exe`. Both distribution formats include the independent updater. Packaging smoke check: `CodexSentinel.exe --smoke-test` (opens then closes without monitoring, update checks, or execution).
+Outputs are `dist/desktop/CodexSentinel/`, `dist/CodexSentinel-windows-x64.zip`, and `dist/codex-sentinel-windows-x64.exe`. Both Windows formats include the independent updater.
 
-GitHub releases are triggered by pushing a `v<version>` tag that matches both `pyproject.toml` and `codex_sentinel/__init__.py`. Release titles, CI artifacts, and standalone downloads include the tag, for example `CodexSentinel-windows-x64-v2.0.3.zip`. Python wheels and source distributions retain their standard versioned filenames.
+The [release workflow](.github/workflows/release.yml) builds Windows, Linux, macOS, Python wheels, and source distributions, then publishes release assets and checksums. A `v<version>` tag must match the versions in `pyproject.toml` and `codex_sentinel/__init__.py`. Release asset names include the tag; Python distributions use their standard versioned names.
 
-[MIT License](LICENSE).
+### Contributing
+
+Bug reports and focused pull requests are welcome. [Open an issue](https://github.com/iss-hui/codex-sentinel/issues) with the Sentinel version, operating system, CLI version, reproduction steps, and relevant redacted logs. Include screenshots for interface issues. For execution changes, cover permissions, duplicate prevention, scheduling, and process cleanup with isolated tests; for UI changes, check both languages, both themes, and narrower windows.
+
+## Project references
+
+- [Changelog](CHANGELOG.md) — release-by-release changes.
+- [Desktop design and theme implementation](docs/neutral-desktop-ui.md) — the five-page UI, appearance behavior, and validation.
+- [Desktop handoff](docs/desktop-handoff.md) — implementation and execution details.
+- [Earlier desktop implementation notes](docs/desktop-completion.md) — historical context.
+- [Screenshot reproduction](docs/assets/readme/README.md) — image inventory and fixture-based rendering.
+
+## License
+
+[MIT](LICENSE).
