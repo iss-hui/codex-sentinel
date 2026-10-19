@@ -1,0 +1,62 @@
+[
+  {
+    "Path": "D:\\WorkSpace\\codex-sentinel\\designs\\round-01\\a.html",
+    "Hash": "C178634354EC21EB067A056D76CF347ED416DDBD34C0C57331B482540BA36B4E"
+  },
+  {
+    "Path": "D:\\WorkSpace\\codex-sentinel\\designs\\round-01\\b.html",
+    "Hash": "83594893D0002DD62A497349388D64D0CA0B4089F536D7726A0CD2BCE68B35AD"
+  },
+  {
+    "Path": "D:\\WorkSpace\\codex-sentinel\\designs\\round-01\\baseline-status.txt",
+    "Hash": "C46D4CC1346A5C4B883DFD9AB853A039EF644E0C5C5F648782B5EE74C44DB84E"
+  },
+  {
+    "Path": "D:\\WorkSpace\\codex-sentinel\\designs\\round-01\\c.html",
+    "Hash": "2B6F20591E3110EC4E5A94226C2BF0C753F182992891072D11306E51C84D92AA"
+  },
+  {
+    "Path": "D:\\WorkSpace\\codex-sentinel\\designs\\round-01\\DESIGN-NOTES.md",
+    "Hash": "8BC7DEE29206387E4857BB9F6F6A9E92A132DF77619B6587B40C1127210B1506"
+  },
+  {
+    "Path": "D:\\WorkSpace\\codex-sentinel\\designs\\round-01\\index.html",
+    "Hash": "C8632092A53554558DE29429569C81DD296C2C93CA00174A230401D5743FFF7D"
+  },
+  {
+    "Path": "D:\\WorkSpace\\codex-sentinel\\designs\\round-01\\prototype.css",
+    "Hash": "45730E5AD350145BB5C9A18296C0B704DD9A6D24804D3FE40034A1787D3350F6"
+  },
+  {
+    "Path": "D:\\WorkSpace\\codex-sentinel\\designs\\round-01\\prototype.js",
+    "Hash": "5D0A7EFB5E264014BD5E9F427F40CBCB0FCF22F89786D48A0DB4E24E4CDEAC1D"
+  },
+  {
+    "Path": "D:\\WorkSpace\\codex-sentinel\\designs\\round-01\\assets\\logo.png",
+    "Hash": "F7E2A205222E2CD96877230BC17B499F2B3FD8C4524C2F08EC0570A3C916EEEF"
+  },
+  {
+    "Path": "D:\\WorkSpace\\codex-sentinel\\designs\\round-01\\screenshots\\a-compact.jpg",
+    "Hash": "89A4B37BADB59CC80F5E4CEB3189E7FF5DFD0F750F5488F574A0133A5531DBD1"
+  },
+  {
+    "Path": "D:\\WorkSpace\\codex-sentinel\\designs\\round-01\\screenshots\\a.jpg",
+    "Hash": "9865702FD49AF2619927EFAE03FC3135E0FDB1257642821F91F4EA2633E4C6BC"
+  },
+  {
+    "Path": "D:\\WorkSpace\\codex-sentinel\\designs\\round-01\\screenshots\\b-compact.jpg",
+    "Hash": "4EE91AF34AE3FBEA71B87B7974B111C9C755A3D2AD0841F4BC93C435ABBC9F79"
+  },
+  {
+    "Path": "D:\\WorkSpace\\codex-sentinel\\designs\\round-01\\screenshots\\b.jpg",
+    "Hash": "92C3302DBEF50990545B8B355269B60818C1AF65F0E9C99AB6AF247E7510EED3"
+  },
+  {
+    "Path": "D:\\WorkSpace\\codex-sentinel\\designs\\round-01\\screenshots\\c-compact.jpg",
+    "Hash": "98B347C404450D7CAE961E6575FC87B52303FF88B24A07C383DE49AE0AF6D223"
+  },
+  {
+    "Path": "D:\\WorkSpace\\codex-sentinel\\designs\\round-01\\screenshots\\c.jpg",
+    "Hash": "B98E523C32090F2AB01F0AA25D931ED658C10A7B4C9FC3B9AD4566B64B21FC3F"
+  }
+]

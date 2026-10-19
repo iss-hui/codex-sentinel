@@ -1,0 +1,21 @@
+[
+  {
+    "page": "planner",
+    "theme": "dark",
+    "viewport": [
+      1160,
+      820
+    ],
+    "size": [
+      1160,
+      820
+    ],
+    "title": "窗口启动与预约 · Sentinel R02",
+    "overflow": [],
+    "brokenImages": [],
+    "controls": 20,
+    "canvas": "rgb(20, 20, 20)",
+    "errors": [],
+    "screenshotCorner": "#181818"
+  }
+]

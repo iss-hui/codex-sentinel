@@ -7,35 +7,15 @@ from codex_sentinel.config import ConfigManager
 from codex_sentinel.gui.common import tr
 from codex_sentinel.gui.icons import application_icon
 from codex_sentinel.gui.main_window import MainWindow
+from codex_sentinel.gui.theme import DARK_STYLESHEET
 from codex_sentinel.gui.tray_icon import SentinelTrayIcon
 from codex_sentinel.i18n import set_lang
-
-DARK_STYLESHEET = """
-QMainWindow, QWidget { background-color: #1e1e2e; color: #cdd6f4; }
-QPushButton { background-color: #313244; border: 1px solid #45475a; border-radius: 6px; padding: 8px 16px; color: #cdd6f4; }
-QPushButton:hover { background-color: #45475a; }
-QPushButton:pressed { background-color: #585b70; }
-QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QComboBox, QDateTimeEdit { background-color: #313244; border: 1px solid #45475a; border-radius: 4px; padding: 6px; color: #cdd6f4; }
-QPushButton:checked { background-color: #285957; border-color: #52bca7; }
-QPushButton:disabled { color: #7f849c; }
-QProgressBar { border: none; border-radius: 4px; background: #313244; text-align: center; min-height: 18px; }
-QProgressBar::chunk { background: #31786e; border-radius: 4px; }
-QTableWidget { background-color: #1e1e2e; alternate-background-color: #181825; gridline-color: #313244; }
-QTableWidget::item { padding: 4px; }
-QHeaderView::section { background-color: #313244; color: #cdd6f4; padding: 6px; border: 1px solid #45475a; }
-QCheckBox { spacing: 8px; }
-QCheckBox::indicator { width: 18px; height: 18px; }
-QFrame#statusCard { background-color: #313244; border-radius: 8px; border-left: 3px solid #45475a; }
-QScrollBar:vertical { background-color: #181825; width: 10px; }
-QScrollBar::handle:vertical { background-color: #45475a; border-radius: 5px; min-height: 20px; }
-QLabel#banner { padding: 12px; border-radius: 8px; font-size: 16px; font-weight: bold; }
-QLabel#sectionTitle { font-size: 14px; font-weight: bold; color: #cdd6f4; }
-"""
 
 
 def main(overrides=None, dry_run=False, smoke_test=False):
     app = QApplication([sys.argv[0]])
     app.setApplicationName("Codex Sentinel")
+    app.setStyle("Fusion")
     app.setWindowIcon(application_icon())
     app.setQuitOnLastWindowClosed(False)
     app.setStyleSheet(DARK_STYLESHEET)

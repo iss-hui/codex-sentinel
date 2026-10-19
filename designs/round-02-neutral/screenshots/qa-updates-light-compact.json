@@ -1,0 +1,21 @@
+[
+  {
+    "page": "updates",
+    "theme": "light",
+    "viewport": [
+      940,
+      700
+    ],
+    "size": [
+      925,
+      786
+    ],
+    "title": "软件更新 · Sentinel R02",
+    "overflow": [],
+    "brokenImages": [],
+    "controls": 15,
+    "canvas": "rgb(246, 246, 246)",
+    "errors": [],
+    "screenshotCorner": "#959595"
+  }
+]

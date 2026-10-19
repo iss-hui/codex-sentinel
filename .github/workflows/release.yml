@@ -148,6 +148,21 @@ jobs:
     needs: [build-pypi, build-windows-exe, build-linux-binary, build-macos-binary]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare release notes
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+
+          version = os.environ["RELEASE_TAG"].removeprefix("v")
+          lines = Path("CHANGELOG.md").read_text(encoding="utf-8").splitlines()
+          start = next(i for i, line in enumerate(lines) if line.startswith(f"## [{version}]"))
+          end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## [")), len(lines))
+          notes = "\n".join(lines[start + 1:end]).strip()
+          Path(".release-notes.md").write_text(notes + "\n", encoding="utf-8")
+
       - name: Download PyPI artifacts
         uses: actions/download-artifact@v4
         with:
@@ -195,6 +210,7 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG }}
           name: Codex Sentinel ${{ env.RELEASE_TAG }}
           files: release-assets/*
+          body_path: .release-notes.md
           generate_release_notes: true
           draft: false
           prerelease: false

@@ -1,0 +1,21 @@
+[
+  {
+    "page": "overview",
+    "theme": "dark",
+    "viewport": [
+      940,
+      700
+    ],
+    "size": [
+      925,
+      786
+    ],
+    "title": "自动化总览 · Sentinel R02",
+    "overflow": [],
+    "brokenImages": [],
+    "controls": 11,
+    "canvas": "rgb(20, 20, 20)",
+    "errors": [],
+    "screenshotCorner": "#181818"
+  }
+]

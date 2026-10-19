@@ -1,0 +1,21 @@
+[
+  {
+    "page": "recovery-settings",
+    "theme": "light",
+    "viewport": [
+      940,
+      700
+    ],
+    "size": [
+      925,
+      786
+    ],
+    "title": "恢复设置 · Sentinel R02",
+    "overflow": [],
+    "brokenImages": [],
+    "controls": 18,
+    "canvas": "rgb(246, 246, 246)",
+    "errors": [],
+    "screenshotCorner": "#959595"
+  }
+]

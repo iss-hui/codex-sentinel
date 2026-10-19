@@ -4,6 +4,7 @@ from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 from codex_sentinel.gui.common import tr
 from codex_sentinel.gui.icons import application_icon
+from codex_sentinel.gui.theme import colors as theme_colors
 
 
 class SentinelTrayIcon(QSystemTrayIcon):
@@ -41,6 +42,9 @@ class SentinelTrayIcon(QSystemTrayIcon):
         ):
             self.show_dashboard_requested.emit()
 
+    def refresh_theme(self):
+        self.set_state(self._state)
+
     def set_state(self, state):
         colors = {
             "unknown": "#7f849c",
@@ -56,7 +60,9 @@ class SentinelTrayIcon(QSystemTrayIcon):
             "resuming": tr("正在恢复会话", "Resuming session"),
             "error": tr("错误", "Error"),
         }
-        presentation = (state, labels.get(state, state))
+        self._state = state
+        border_color = theme_colors(self.parent())["sidebar"]
+        presentation = (state, labels.get(state, state), border_color)
         if getattr(self, "_presentation", None) == presentation:
             return
         pixmap = QPixmap(32, 32)
@@ -65,7 +71,7 @@ class SentinelTrayIcon(QSystemTrayIcon):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.drawPixmap(0, 0, self._logo.pixmap(32, 32))
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor("#1e1e2e"))
+        painter.setBrush(QColor(border_color))
         painter.drawEllipse(20, 20, 12, 12)
         painter.setBrush(QColor(colors.get(state, "#10b981")))
         painter.drawEllipse(22, 22, 8, 8)

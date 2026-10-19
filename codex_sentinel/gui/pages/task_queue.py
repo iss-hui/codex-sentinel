@@ -5,11 +5,11 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QCheckBox,
     QHBoxLayout,
     QHeaderView,
     QPlainTextEdit,
     QPushButton,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -17,6 +17,14 @@ from PySide6.QtWidgets import (
 )
 
 from codex_sentinel.gui.common import permission_text, status_text, time_text, tr
+from codex_sentinel.gui.ui import (
+    STATUS_ROLE,
+    StatusDelegate,
+    Toggle,
+    card,
+    heading,
+    label,
+)
 
 
 class TaskQueuePage(QWidget):
@@ -34,15 +42,39 @@ class TaskQueuePage(QWidget):
         self.session_titles = {}
         self._detail_task_id = None
         layout = QVBoxLayout(self)
-        self.chk_auto = QCheckBox(
+        layout.setContentsMargins(24, 22, 24, 20)
+        layout.setSpacing(14)
+        heading(
+            layout,
+            tr("自动化记录与日志", "Automation history and logs")
+            if read_only
+            else tr("执行队列", "Task queue"),
             tr(
-                "启用预约队列（按顺序逐个执行）",
-                "Enable scheduled queue (one task at a time)",
+                "查看执行目标、结果与 CLI 原始日志。",
+                "Inspect targets, results and original CLI logs.",
             )
+            if read_only
+            else tr(
+                "只管理用户预约；自动恢复与持续激活独立运行。",
+                "Manages your schedules; recovery and activation run independently.",
+            ),
         )
+        splitter = QSplitter(Qt.Orientation.Vertical)
+        splitter.setChildrenCollapsible(False)
+        list_card, list_layout = card()
+        list_layout.setContentsMargins(0, 0, 0, 0)
+        list_layout.setSpacing(0)
+        self.chk_auto = Toggle(tr("启用预约队列", "Enable scheduled queue"))
         self.chk_auto.toggled.connect(self.enabled_changed)
-        layout.addWidget(self.chk_auto)
         self.chk_auto.setVisible(not read_only)
+        top = QHBoxLayout()
+        top.setContentsMargins(18, 12, 18, 12)
+        top.addWidget(self.chk_auto)
+        top.addStretch()
+        self.lbl_count = label("", "hint")
+        self.lbl_count.setWordWrap(False)
+        top.addWidget(self.lbl_count)
+        list_layout.addLayout(top)
         self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(
             [
@@ -55,27 +87,44 @@ class TaskQueuePage(QWidget):
             ]
         )
         self.table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
+            QHeaderView.ResizeMode.Interactive
         )
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setDefaultAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        for i, width in enumerate((190, 160, 95, 150, 100, 190)):
+            self.table.setColumnWidth(i, width)
+        self.table.verticalHeader().hide()
+        self.table.verticalHeader().setDefaultSectionSize(45)
+        self.table.setShowGrid(False)
+        self.table.setMinimumHeight(210)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setItemDelegateForColumn(4, StatusDelegate(self.table))
         self.table.itemSelectionChanged.connect(self.show_detail)
-        layout.addWidget(self.table, 2)
+        list_layout.addWidget(self.table, 1)
         row = QHBoxLayout()
+        row.setContentsMargins(14, 12, 14, 12)
+        row.setSpacing(7)
         add = QPushButton(tr("添加", "Add"))
+        add.setObjectName("primary")
         add.clicked.connect(self.add_requested)
         row.addWidget(add)
-        for label, signal in (
+        for title, signal in (
             (tr("编辑", "Edit"), self.edit_requested),
             (tr("删除", "Delete"), self.delete_requested),
             (tr("重新排期至现在", "Reschedule now"), self.retry_requested),
         ):
-            button = QPushButton(label)
+            button = QPushButton(title)
             button.clicked.connect(lambda checked=False, sig=signal: self._emit(sig))
             row.addWidget(button)
-        for label, delta in (("↑", -1), ("↓", 1)):
-            button = QPushButton(label)
+        for title, delta in (("↑", -1), ("↓", 1)):
+            button = QPushButton(title)
+            button.setToolTip(
+                tr("上移", "Move up") if delta < 0 else tr("下移", "Move down")
+            )
             button.clicked.connect(
                 lambda checked=False, d=delta: (
                     self.move_requested.emit(self.selected_id(), d)
@@ -84,18 +133,45 @@ class TaskQueuePage(QWidget):
                 )
             )
             row.addWidget(button)
-        stop = QPushButton(tr("停止当前执行", "Stop current run"))
-        stop.clicked.connect(self.stop_requested)
-        row.addWidget(stop)
-        layout.addLayout(row)
+        row.addStretch()
+        self.btn_stop = QPushButton(tr("停止当前执行", "Stop current run"))
+        self.btn_stop.clicked.connect(self.stop_requested)
+        row.addWidget(self.btn_stop)
+        list_layout.addLayout(row)
         if read_only:
             for index in range(row.count()):
-                row.itemAt(index).widget().hide()
+                widget = row.itemAt(index).widget()
+                if widget:
+                    widget.hide()
+        splitter.addWidget(list_card)
+        detail_card, detail_layout = card(
+            tr("任务详情与 CLI 日志", "Task details and CLI log")
+        )
         self.detail = QPlainTextEdit()
         self.detail.setReadOnly(True)
-        # The log read is already bounded. A block cap would silently discard
-        # the target header and make every refresh appear to change the text.
-        layout.addWidget(self.detail, 1)
+        self.detail.setObjectName("executionLog")
+        self.detail.setMinimumHeight(150)
+        self.detail.setPlaceholderText(
+            tr(
+                "选择任务查看提示词、权限、目录与执行结果。",
+                "Select a task to inspect its prompt, permissions, directory and result.",
+            )
+        )
+        # Preserve the full header and stable text selection while logs refresh.
+        detail_layout.addWidget(self.detail, 1)
+        splitter.addWidget(detail_card)
+        splitter.setSizes([370, 230])
+        layout.addWidget(splitter, 1)
+        if not read_only:
+            layout.addWidget(
+                label(
+                    tr(
+                        "暂停队列不影响自动恢复与持续激活。失败或中断的任务需查看日志后手动重新排期。",
+                        "Pausing the queue does not affect recovery or activation. Inspect failed or interrupted runs before rescheduling.",
+                    ),
+                    "hint",
+                )
+            )
 
     def selected_id(self):
         item = self.table.item(self.table.currentRow(), 0)
@@ -136,10 +212,16 @@ class TaskQueuePage(QWidget):
                     f"{value}\nID: {task.session_id}" if column == 3 else value
                 )
                 item.setData(Qt.ItemDataRole.UserRole, task.id)
+                if column == 4:
+                    item.setData(STATUS_ROLE, task.status)
                 self.table.setItem(row, column, item)
             if task.id == selected:
                 self.table.selectRow(row)
+        if self.table.currentRow() < 0 and tasks:
+            self.table.selectRow(0)
         self.table.blockSignals(False)
+        pending = sum(t.status in ("pending", "waiting") for t in tasks)
+        self.lbl_count.setText(tr(f"{len(tasks)} 条记录 · {pending} 个待执行", f"{len(tasks)} records · {pending} pending"))
         self.show_detail()
 
     def show_detail(self):

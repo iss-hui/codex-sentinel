@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.9] - 2026-10-19
+
+### Added
+- Neutral dark and light desktop themes, an immediate toolbar switch, a persisted Settings choice, and system-theme following.
+
+### Changed
+- Apply the approved A layout to all five native PySide6 pages, recovery settings, automation history, update dialogs, and tray presentation.
+- Place overview quota records beside the recovery/activation workspace, split scheduling content from timing, and expose full conversation IDs and directories in a read-only detail panel.
+- Keep theme changes independent of execution preferences, unsaved forms, and log selections. Preserve existing CLI permissions, scheduling, recovery and update behavior.
+
 ## [2.0.8] - 2026-10-19
 
 ### Added

@@ -1,0 +1,21 @@
+[
+  {
+    "page": "tray",
+    "theme": "dark",
+    "viewport": [
+      1160,
+      820
+    ],
+    "size": [
+      1160,
+      820
+    ],
+    "title": "托盘菜单 · Sentinel R02",
+    "overflow": [],
+    "brokenImages": [],
+    "controls": 17,
+    "canvas": "rgb(20, 20, 20)",
+    "errors": [],
+    "screenshotCorner": "#0a0a0a"
+  }
+]

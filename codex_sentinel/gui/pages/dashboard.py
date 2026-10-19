@@ -1,11 +1,12 @@
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QDateTime, Qt, Signal
+from PySide6.QtCore import QDateTime, QEvent, Qt, Signal
 from PySide6.QtWidgets import (
-    QCheckBox,
+    QBoxLayout,
     QComboBox,
     QDateTimeEdit,
+    QDialog,
     QFileDialog,
     QFormLayout,
     QFrame,
@@ -23,6 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from codex_sentinel.gui.common import populate_models, status_text, time_text, tr
+from codex_sentinel.gui.ui import Toggle, tone
 from codex_sentinel.i18n import t
 
 
@@ -41,7 +43,7 @@ def _label(text="", role="muted", selectable=False):
 
 def _card():
     card = QFrame()
-    card.setObjectName("overviewCard")
+    card.setObjectName("panel")
     layout = QVBoxLayout(card)
     layout.setContentsMargins(20, 18, 20, 18)
     layout.setSpacing(12)
@@ -67,28 +69,8 @@ class DashboardPage(QWidget):
         self.snapshot = {}
         self._preferred_activation_bucket = ""
         self.setObjectName("dashboard")
-        self.setStyleSheet("""
-            QWidget#dashboard { background: #1e1e2e; }
-            QFrame#overviewCard { background: #262736; border: 1px solid #3b3d51; border-radius: 14px; }
-            QLabel { background: transparent; }
-            QLabel#heading { font-size: 25px; font-weight: 700; color: #f1f3fa; }
-            QLabel#section { font-size: 14px; font-weight: 600; color: #eff1f8; }
-            QLabel#target { font-size: 21px; font-weight: 600; color: #f1f3fa; }
-            QLabel#muted { color: #9fa6be; }
-            QLabel#path { color: #aab6d0; font-family: 'Consolas', monospace; font-size: 12px; }
-            QLabel#activationStatus { color: #8de0ce; font-size: 21px; font-weight: 600; }
-            QLabel#clock { color: #8de0ce; font-size: 30px; font-weight: 600; }
-            QLabel#pill { color: #8de0ce; background: #2c4445; padding: 6px 10px; border-radius: 8px; }
-            QPushButton#mode { text-align: left; padding: 13px 18px; font-size: 13px; border-radius: 10px; }
-            QPushButton#mode:checked { background: #284542; border: 1px solid #69c9b6; color: #a0eddb; }
-            QPushButton#primary { background: #79d6c1; border-color: #79d6c1; color: #172e2b; font-weight: 600; }
-            QPushButton#primary:hover { background: #9ae7d6; }
-            QPushButton#primary:disabled { background: #333b43; border-color: #45475a; color: #8c98a5; }
-            QProgressBar { min-height: 7px; max-height: 7px; }
-            QProgressBar::chunk { background: #69bdaa; }
-        """)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 12, 18, 12)
+        layout.setContentsMargins(24, 22, 24, 20)
         layout.setSpacing(14)
         header = QHBoxLayout()
         titles = QVBoxLayout()
@@ -120,9 +102,7 @@ class DashboardPage(QWidget):
                 "02   Activate a five-hour window\nFollow resets with a fresh conversation",
             )
         )
-        for index, button in enumerate(
-            (self.btn_recovery_mode, self.btn_activation_mode)
-        ):
+        for index, button in enumerate((self.btn_recovery_mode, self.btn_activation_mode)):
             button.setObjectName("mode")
             button.setCheckable(True)
             button.clicked.connect(lambda checked=False, i=index: self.set_mode(i))
@@ -133,8 +113,26 @@ class DashboardPage(QWidget):
         self.mode_stack.addWidget(self._activation_card())
         # Hidden mode contents must not force the visible card to their height.
         self.mode_stack.currentChanged.connect(self._fit_mode)
-        layout.addWidget(self.mode_stack)
-        layout.addWidget(self._quota_card())
+        self.content_layout = QBoxLayout(QBoxLayout.Direction.LeftToRight)
+        self.content_layout.setSpacing(16)
+        self.content_layout.addWidget(self.mode_stack, 1)
+        self.quota_card = self._quota_card()
+        self.quota_card.setMaximumWidth(260)
+        self.content_layout.addWidget(self.quota_card)
+        layout.addLayout(self.content_layout)
+        recent, recent_layout = _card()
+        row = QHBoxLayout()
+        self.lbl_recent = _label(
+            tr("尚无恢复或激活记录", "No recovery or activation history yet"),
+            selectable=True,
+        )
+        row.addWidget(self.lbl_recent, 1)
+        recent_button = QPushButton(tr("查看记录", "View history"))
+        recent_button.setObjectName("textButton")
+        recent_button.clicked.connect(self.history_requested)
+        row.addWidget(recent_button)
+        recent_layout.addLayout(row)
+        layout.addWidget(recent)
         self.lbl_status = _label()
         layout.addWidget(self.lbl_status)
         layout.addStretch()
@@ -143,7 +141,7 @@ class DashboardPage(QWidget):
     def _fit_mode(self, index):
         for i in range(self.mode_stack.count()):
             self.mode_stack.widget(i).setSizePolicy(
-                QSizePolicy.Policy.Preferred,
+                QSizePolicy.Policy.Preferred if i == index else QSizePolicy.Policy.Ignored,
                 QSizePolicy.Policy.Preferred
                 if i == index
                 else QSizePolicy.Policy.Ignored,
@@ -159,10 +157,8 @@ class DashboardPage(QWidget):
     def _recovery_card(self):
         card, layout = _card()
         row = QHBoxLayout()
-        row.addWidget(
-            _label(tr("最新恢复目标", "Latest recovery target"), "section"), 1
-        )
-        self.chk_auto_resume = QCheckBox(tr("自动恢复", "Automatic recovery"))
+        row.addWidget(_label(tr("最新恢复目标", "Latest recovery target"), "section"), 1)
+        self.chk_auto_resume = Toggle(tr("自动恢复", "Automatic recovery"))
         row.addWidget(self.chk_auto_resume)
         layout.addLayout(row)
         self.lbl_recovery = _label(
@@ -187,9 +183,7 @@ class DashboardPage(QWidget):
         self.lbl_recovery_countdown = _label("—", "clock")
         clock.addWidget(self.lbl_recovery_countdown)
         clock.addWidget(
-            _label(
-                tr("距离最早恢复（含缓冲）", "Until earliest recovery (with buffer)")
-            )
+            _label(tr("距离最早恢复（含缓冲）", "Until earliest recovery (with buffer)"))
         )
         row.addLayout(clock, 1)
         self.lbl_recovery_time = _label()
@@ -197,10 +191,13 @@ class DashboardPage(QWidget):
         layout.addLayout(row)
 
         self.btn_details = QPushButton(tr("恢复设置", "Recovery settings"))
-        self.btn_details.setCheckable(True)
-        self.recovery_details = QWidget()
+        self.recovery_details = QDialog(self)
+        self.recovery_details.setWindowTitle(tr("恢复设置", "Recovery settings"))
+        self.recovery_details.resize(440, 320)
         form = QFormLayout(self.recovery_details)
-        form.setContentsMargins(0, 0, 0, 0)
+        form.setContentsMargins(22, 20, 22, 20)
+        form.setVerticalSpacing(16)
+        form.addRow(_label(tr("恢复设置", "Recovery settings"), "section"))
         self.spin_buffer = QSpinBox()
         self.spin_buffer.setRange(0, 600)
         self.spin_buffer.setSuffix(tr(" 秒", " s"))
@@ -227,12 +224,15 @@ class DashboardPage(QWidget):
         self.btn_save = QPushButton(tr("保存恢复设置", "Save resume settings"))
         self.btn_save.setObjectName("primary")
         self.btn_save.clicked.connect(
-            lambda: self.settings_changed.emit(self.get_settings())
+            lambda: (
+                self.settings_changed.emit(self.get_settings()),
+                self.recovery_details.accept(),
+            )
         )
         form.addRow(self.btn_save)
         self.recovery_details.hide()
-        self.btn_details.toggled.connect(self.recovery_details.setVisible)
-        layout.addWidget(self.recovery_details)
+        self.btn_details.clicked.connect(self.recovery_details.open)
+        layout.addStretch()
         row = QHBoxLayout()
         self.btn_resume = QPushButton(tr("刷新目标", "Refresh target"))
         self.btn_resume.clicked.connect(self.resume_now_requested)
@@ -347,42 +347,67 @@ class DashboardPage(QWidget):
         layout.addLayout(row)
         return card
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit_columns()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.parentWidget():
+            self.parentWidget().installEventFilter(self)
+        self._fit_columns()
+
+    def eventFilter(self, watched, event):
+        if watched is self.parentWidget() and event.type() == QEvent.Type.Resize:
+            self._fit_columns()
+        return super().eventFilter(watched, event)
+
+    def _fit_columns(self):
+        available = self.parentWidget().width() if self.parentWidget() else self.width()
+        compact = available < 760
+        self.content_layout.setDirection(
+            QBoxLayout.Direction.TopToBottom
+            if compact
+            else QBoxLayout.Direction.LeftToRight
+        )
+        self.quota_card.setMaximumWidth(16777215 if compact else 260)
+
     def _quota_card(self):
         card, layout = _card()
-        row = QHBoxLayout()
-        self.banner = _label(tr("尚无本地限额记录", "No local quota record"), "section")
-        row.addWidget(self.banner, 1)
+        layout.addWidget(_label(tr("本地限额记录", "Local quota records"), "section"))
         self.cmb_bucket = QComboBox()
-        self.cmb_bucket.setMinimumWidth(160)
+        self.cmb_bucket.setMinimumWidth(0)
         self.cmb_bucket.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
         )
         self.cmb_bucket.currentIndexChanged.connect(self.render_limits)
-        row.addWidget(self.cmb_bucket)
-        layout.addLayout(row)
-        middle = QHBoxLayout()
-        self.window_labels, self.window_bars = [], []
+        layout.addWidget(self.cmb_bucket)
+        self.banner = _label(tr("尚无本地限额记录", "No local quota record"), "hint")
+        layout.addWidget(self.banner)
+        self.window_labels, self.window_bars, self.window_values = [], [], []
         for _ in range(2):
-            column = QVBoxLayout()
             label, bar = _label(), QProgressBar()
+            value = _label("—", "quotaValue")
             bar.setRange(0, 100)
             bar.setTextVisible(False)
-            column.addWidget(label)
-            column.addWidget(bar)
-            column.addStretch()
-            middle.addLayout(column, 1)
+            layout.addWidget(label)
+            layout.addWidget(value)
+            layout.addWidget(bar)
+            layout.addSpacing(5)
             self.window_labels.append(label)
             self.window_bars.append(bar)
-        layout.addLayout(middle)
-        self.lbl_observed = _label()
+            self.window_values.append(value)
+        self.lbl_observed = _label("", "hint")
         layout.addWidget(self.lbl_observed)
         self.lbl_note = _label(
             tr(
-                "本地记录仅供参考；实际额度与重置时间由服务器决定。",
-                "Local records are indicative; the server determines quota and reset times.",
-            )
+                "本地记录可能滞后；实际额度与重置时间由服务器决定。",
+                "Local records may lag. The server determines quota and reset times.",
+            ),
+            "hint",
         )
         layout.addWidget(self.lbl_note)
+        layout.addStretch()
         return card
 
     def load_settings(self, config):
@@ -413,6 +438,22 @@ class DashboardPage(QWidget):
                 f"本地监测 · {config['poll_interval']} 秒",
                 f"Local monitoring · {config['poll_interval']}s",
             )
+        )
+
+    def render_recent(self, tasks):
+        if not tasks:
+            self.lbl_recent.setText(
+                tr("尚无恢复或激活记录", "No recovery or activation history yet")
+            )
+            return
+        latest = max(tasks, key=lambda task: task.completed_at or task.created_at)
+        kind = (
+            tr("上次恢复", "Last recovery")
+            if latest.kind != "activation"
+            else tr("上次激活", "Last activation")
+        )
+        self.lbl_recent.setText(
+            f"{kind} · {status_text(latest.status)} · {time_text(latest.completed_at)}\n{latest.name}"
         )
 
     def get_settings(self):
@@ -646,6 +687,7 @@ class DashboardPage(QWidget):
                 self.window_labels[i].setText(
                     f"{name} · {value}\n{tr('重置', 'Reset')}: —"
                 )
+                self.window_values[i].setText("—")
                 self.window_bars[i].setValue(0)
                 self.window_bars[i].setFormat(value)
                 self.window_bars[i].setEnabled(False)
@@ -664,9 +706,12 @@ class DashboardPage(QWidget):
             value = tr("未知", "Unknown") if pct is None else f"{pct:g}%"
             suffix = tr(" · 记录已过期", " · record expired") if stale else ""
             self.window_labels[i].setText(
-                f"{name} · {tr('已用', 'used')} {value}{suffix}\n"
+                f"{name}{suffix}\n"
                 f"{tr('重置', 'Reset')}: {time_text(end)}"
             )
+            self.window_values[i].setText(value)
+            self.window_values[i].setEnabled(not stale)
+            tone(self.window_bars[i], "warning" if pct is not None and pct >= 100 and not stale else "normal")
             self.window_bars[i].setValue(round(max(0, min(100, pct or 0))))
             self.window_bars[i].setFormat(value)
             self.window_bars[i].setEnabled(pct is not None and not stale)
@@ -682,9 +727,7 @@ class DashboardPage(QWidget):
             if limits
             else tr("尚无本地限额记录", "No local quota record")
         )
-        self.banner.setStyleSheet(
-            f"color: {'#f2c078' if exhausted else '#82d8c4'}; background: transparent;"
-        )
+        tone(self.banner, "warning" if exhausted else "normal")
         self.lbl_observed.setText(
             f"{tr('记录时间', 'Observed')}: {time_text(limits.get('observed_at'))} · "
             f"{tr('套餐', 'Plan')}: {limits.get('plan_type') or '—'}"

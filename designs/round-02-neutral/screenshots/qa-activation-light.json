@@ -1,0 +1,21 @@
+[
+  {
+    "page": "activation",
+    "theme": "light",
+    "viewport": [
+      1160,
+      820
+    ],
+    "size": [
+      1160,
+      820
+    ],
+    "title": "持续激活 · Sentinel R02",
+    "overflow": [],
+    "brokenImages": [],
+    "controls": 15,
+    "canvas": "rgb(246, 246, 246)",
+    "errors": [],
+    "screenshotCorner": "#fafafa"
+  }
+]

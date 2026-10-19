@@ -9,6 +9,7 @@ from tempfile import NamedTemporaryFile
 
 DEFAULT_CONFIG = {
     "language": "auto",
+    "theme": "dark",
     "poll_interval": 5,
     "buffer_seconds": 30,
     "auto_resume": False,
@@ -80,6 +81,8 @@ class ConfigManager:
             raise ValueError("Invalid activation start time")
         if config["language"] not in ("auto", "zh", "en"):
             raise ValueError("Invalid language")
+        if config["theme"] not in ("dark", "light", "system"):
+            raise ValueError("Invalid theme")
         if not 1 <= config["poll_interval"] <= 300:
             raise ValueError("Poll interval must be between 1 and 300 seconds")
         if not 0 <= config["buffer_seconds"] <= 600:

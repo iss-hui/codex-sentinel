@@ -1,0 +1,70 @@
+{
+  "checks": [
+    {
+      "name": "theme toggles all neutral surfaces",
+      "passed": true
+    },
+    {
+      "name": "sidebar opens planner",
+      "passed": true
+    },
+    {
+      "name": "prefill respects known exhausted window",
+      "passed": true
+    },
+    {
+      "name": "saving a schedule opens queue and adds task",
+      "passed": true
+    },
+    {
+      "name": "queue count follows new schedule",
+      "passed": true
+    },
+    {
+      "name": "completed task exposes actual launch ID and CLI log",
+      "passed": true
+    },
+    {
+      "name": "conversation search uses full directory",
+      "passed": true
+    },
+    {
+      "name": "selection reveals complete ID and directory",
+      "passed": true
+    },
+    {
+      "name": "settings theme choice updates current page",
+      "passed": true
+    },
+    {
+      "name": "chosen activation date becomes visible",
+      "passed": true
+    },
+    {
+      "name": "activation retains configured directory",
+      "passed": true
+    },
+    {
+      "name": "activation turns automatic recovery off",
+      "passed": true
+    },
+    {
+      "name": "buffer changes earliest recovery and countdown",
+      "passed": true
+    },
+    {
+      "name": "history has both target and started IDs",
+      "passed": true
+    },
+    {
+      "name": "download preview has progress and cancellation",
+      "passed": true
+    },
+    {
+      "name": "cancel returns to downloadable update state",
+      "passed": true
+    }
+  ],
+  "errors": [],
+  "consoleErrors": []
+}

@@ -7,7 +7,6 @@ from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QHBoxLayout,
-    QLabel,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -28,6 +27,8 @@ from codex_sentinel.gui.pages.quota_timer import QuotaTimerPage
 from codex_sentinel.gui.pages.sessions import SessionsPage
 from codex_sentinel.gui.pages.settings import SettingsPage
 from codex_sentinel.gui.pages.task_queue import TaskQueuePage
+from codex_sentinel.gui.theme import apply_theme, colors
+from codex_sentinel.gui.ui import label, outline_icon
 from codex_sentinel.gui.update_dialog import UpdateDialog, UpdateWorker
 from codex_sentinel.gui.workers import ExecutionWorker, MonitorWorker
 from codex_sentinel.quota_scheduler import QuotaScheduler
@@ -98,30 +99,56 @@ class MainWindow(QMainWindow):
     def _setup_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
-        layout = QHBoxLayout(central)
-        sidebar = QVBoxLayout()
-        sidebar.setSpacing(8)
+        root = QVBoxLayout(central)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+        toolbar_widget = QWidget()
+        toolbar_widget.setObjectName("toolbar")
+        toolbar = QHBoxLayout(toolbar_widget)
+        toolbar.setContentsMargins(18, 5, 18, 5)
+        self.location_label = label("Codex Sentinel", "hint")
+        self.location_label.setWordWrap(False)
+        toolbar.addWidget(self.location_label)
+        toolbar.addStretch()
+        self.theme_button = QPushButton()
+        self.theme_button.setObjectName("themeButton")
+        self.theme_button.clicked.connect(self._toggle_theme)
+        toolbar.addWidget(self.theme_button)
+        root.addWidget(toolbar_widget)
+        layout = QHBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        root.addLayout(layout, 1)
+        self.sidebar_widget = QWidget()
+        self.sidebar_widget.setObjectName("sidebar")
+        self.sidebar_widget.setFixedWidth(188)
+        sidebar = QVBoxLayout(self.sidebar_widget)
+        sidebar.setContentsMargins(14, 25, 14, 18)
+        sidebar.setSpacing(6)
         brand = QHBoxLayout()
         self.brand_button = QPushButton("Sentinel")
+        self.brand_button.setObjectName("brand")
         self.brand_button.setIcon(application_icon())
         self.brand_button.setIconSize(QSize(32, 32))
         self.brand_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.brand_button.setToolTip(tr(f"当前版本 v{__version__} · 检查更新", f"Version v{__version__} · Check for updates"))
-        self.brand_button.setStyleSheet("QPushButton { font-size: 19px; font-weight: 600; color: #f1f3fa; border: none; padding: 0; background: transparent; text-align: left; }")
+        self.brand_button.setToolTip(
+            tr(
+                f"当前版本 v{__version__} · 检查更新",
+                f"Version v{__version__} · Check for updates",
+            )
+        )
         self.brand_button.clicked.connect(self.show_updates)
         brand.addWidget(self.brand_button)
         self.new_badge = QPushButton("NEW")
-        self.new_badge.setFixedSize(42, 22)
-        self.new_badge.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.new_badge.setStyleSheet("QPushButton { background: #71e2b5; color: #122d29; font-size: 10px; font-weight: 800; border: none; border-radius: 7px; padding: 0; } QPushButton:hover { background: #9bf0cf; }")
+        self.new_badge.setObjectName("newBadge")
+        self.new_badge.setFixedSize(35, 22)
         self.new_badge.clicked.connect(self.show_updates)
         self.new_badge.hide()
         brand.addWidget(self.new_badge)
-        brand.addStretch()
         sidebar.addLayout(brand)
-        subtitle = QLabel(tr("Codex 使用时间管理", "Codex usage planner"))
-        subtitle.setStyleSheet("color: #9fa6be; padding: 0px 0px 16px 0px;")
-        sidebar.addWidget(subtitle)
+        sidebar.addWidget(label(tr("Codex 使用时间管理", "Codex usage planner"), "hint"))
+        sidebar.addSpacing(24)
+        sidebar.addWidget(label(tr("工作空间", "Workspace"), "eyebrow"))
         self.nav_buttons = []
         for index, title in enumerate(
             (
@@ -133,14 +160,25 @@ class MainWindow(QMainWindow):
             )
         ):
             button = QPushButton(title)
+            button.setObjectName("nav")
             button.setCheckable(True)
-            button.setMinimumWidth(150)
-            button.setMinimumHeight(40)
+            button.setIconSize(QSize(18, 18))
             button.clicked.connect(lambda checked=False, i=index: self.switch_page(i))
             sidebar.addWidget(button)
             self.nav_buttons.append(button)
         sidebar.addStretch()
-        layout.addLayout(sidebar)
+        sidebar.addWidget(label(tr("本地优先", "Local first"), "muted"))
+        sidebar.addWidget(
+            label(tr("你的对话留在本机", "Conversations stay on this device"), "hint")
+        )
+        version = QPushButton(
+            tr(f"v{__version__}   检查更新", f"v{__version__}   Check for updates")
+        )
+        version.setObjectName("version")
+        version.clicked.connect(self.show_updates)
+        sidebar.addSpacing(12)
+        sidebar.addWidget(version)
+        layout.addWidget(self.sidebar_widget)
         self.stacked = QStackedWidget()
         self.page_dashboard = DashboardPage()
         self.page_quota = QuotaTimerPage()
@@ -160,7 +198,52 @@ class MainWindow(QMainWindow):
             scroll.setWidget(page)
             self.stacked.addWidget(scroll)
         layout.addWidget(self.stacked, 1)
+        self.statusBar().setSizeGripEnabled(False)
         self.switch_page(0)
+
+    def _apply_theme(self):
+        effective = apply_theme(self, self.settings["theme"])
+        for dialog in self.findChildren(QDialog):
+            apply_theme(dialog, self.settings["theme"])
+        self.theme_button.setText(
+            tr("白色主题", "Light theme")
+            if effective == "dark"
+            else tr("暗黑主题", "Dark theme")
+        )
+        self.theme_button.setIcon(
+            outline_icon("sun" if effective == "dark" else "moon", colors(self)["muted"])
+        )
+        combo = self.page_settings.cmb_theme
+        previous = combo.blockSignals(True)
+        combo.setCurrentIndex(combo.findData(self.settings["theme"]))
+        combo.blockSignals(previous)
+        self._update_nav_icons()
+        if self.tray and hasattr(self.tray, "refresh_theme"):
+            self.tray.refresh_theme()
+
+    def _update_nav_icons(self):
+        c = colors(self)
+        for button, name in zip(
+            self.nav_buttons, ("overview", "calendar", "queue", "chat", "settings")
+        ):
+            button.setIcon(
+                outline_icon(name, c["blue"] if button.isChecked() else c["muted"])
+            )
+
+    def _set_theme(self, choice):
+        try:
+            self.manager.save({"theme": choice})
+            self.settings["theme"] = choice
+            self._apply_theme()
+        except (OSError, ValueError) as exc:
+            self._error(str(exc))
+
+    def _toggle_theme(self):
+        self._set_theme("light" if self.property("effectiveTheme") == "dark" else "dark")
+
+    def _system_theme_changed(self, scheme):
+        if self.settings["theme"] == "system":
+            self._apply_theme()
 
     def _connect_signals(self):
         self.monitor_worker.snapshot_ready.connect(self._on_snapshot)
@@ -175,6 +258,8 @@ class MainWindow(QMainWindow):
         self.page_dashboard.stop_requested.connect(self.stop_execution)
         self.page_dashboard.history_requested.connect(self.show_recovery_history)
         self.page_settings.settings_changed.connect(self._save_settings)
+        self.page_settings.theme_changed.connect(self._set_theme)
+        QApplication.styleHints().colorSchemeChanged.connect(self._system_theme_changed)
         self.page_settings.btn_updates.clicked.connect(self.show_updates)
         self.page_quota.task_requested.connect(self._save_task)
         self.page_tasks.add_requested.connect(
@@ -193,7 +278,9 @@ class MainWindow(QMainWindow):
         self.page_dashboard.chk_auto_resume.blockSignals(True)
         self.page_dashboard.load_settings(self.settings)
         self.page_dashboard.chk_auto_resume.blockSignals(False)
+        self.page_quota.set_buffer_seconds(self.settings["buffer_seconds"])
         self.page_settings.load_settings(self.settings)
+        self._apply_theme()
         self.page_tasks.chk_auto.blockSignals(True)
         self.page_tasks.chk_auto.setChecked(self.settings["queue_enabled"])
         self.page_tasks.chk_auto.blockSignals(False)
@@ -308,6 +395,7 @@ class MainWindow(QMainWindow):
             self.recovery_history = TaskQueuePage(read_only=True)
             layout.addWidget(self.recovery_history)
         self._refresh_recovery()
+        apply_theme(self.recovery_dialog, self.settings["theme"])
         self.recovery_dialog.show()
         self.recovery_dialog.raise_()
 
@@ -315,8 +403,9 @@ class MainWindow(QMainWindow):
         self.monitor_worker.recovery_session_id = self.recovery.target["session_id"] if self.recovery.target else ""
         self.page_dashboard.render_recovery(self.recovery.target, self.settings)
         self.page_dashboard.render_activation(self.activation.plan(self.snapshot, self.settings), self.activation.target, self.settings)
+        tasks = self.recovery.history_tasks() + self.activation.history_tasks()
+        self.page_dashboard.render_recent(tasks)
         if self.recovery_dialog is not None:
-            tasks = self.recovery.history_tasks() + self.activation.history_tasks()
             if self.executor and self.executor.task.kind in ("auto_resume", "activation") and self.executor.task.status == "running":
                 tasks.append(self.executor.task)
             self.recovery_history.refresh_table(sorted(tasks, key=lambda item: item.created_at, reverse=True))
@@ -359,6 +448,9 @@ class MainWindow(QMainWindow):
 
     def _tick(self):
         self.page_dashboard.render_limits()
+        self.page_tasks.btn_stop.setEnabled(self.executor is not None)
+        if self.stacked.currentIndex() == 1:
+            self.page_quota._update_preview()
         if self._quitting:
             return
         if self._install_requested:
@@ -649,6 +741,7 @@ class MainWindow(QMainWindow):
 
     def _refresh_queue(self):
         self.page_tasks.refresh_table(self.scheduler.task_queue)
+        self.page_tasks.btn_stop.setEnabled(self.executor is not None)
 
     def stop_execution(self):
         if self.executor:
@@ -658,6 +751,8 @@ class MainWindow(QMainWindow):
         self.stacked.setCurrentIndex(index)
         for i, button in enumerate(self.nav_buttons):
             button.setChecked(i == index)
+        self.location_label.setText("Codex Sentinel  /  " + self.nav_buttons[index].text())
+        self._update_nav_icons()
 
     def _error(self, message):
         QMessageBox.warning(self, "Codex Sentinel", message)

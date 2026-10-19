@@ -1,0 +1,21 @@
+[
+  {
+    "page": "conversations",
+    "theme": "dark",
+    "viewport": [
+      940,
+      700
+    ],
+    "size": [
+      925,
+      927
+    ],
+    "title": "本地对话 · Sentinel R02",
+    "overflow": [],
+    "brokenImages": [],
+    "controls": 5,
+    "canvas": "rgb(20, 20, 20)",
+    "errors": [],
+    "screenshotCorner": "#181818"
+  }
+]
