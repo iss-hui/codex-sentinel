@@ -122,6 +122,26 @@ def test_review_logs_do_not_crowd_out_latest_user_or_watched_target(tmp_path):
     assert states == {"old": "rate_limited", "recent": "rate_limited"}
 
 
+def test_subagent_replaying_parent_metadata_does_not_hide_parent(tmp_path):
+    import os
+
+    parent = tmp_path / "parent.jsonl"
+    child = tmp_path / "child.jsonl"
+    append(parent, {"type": "session_meta", "payload": {"id": "p", "source": "vscode", "thread_source": "user"}},
+           event("task_complete", error={"codex_error_info": "usage_limit_exceeded"}))
+    # 子代理文件先写自己的元数据，再重放父聊天的 session_meta 和已完成的历史。
+    append(child, {"type": "session_meta", "payload": {"id": "c", "source": {"subagent": {}}, "thread_source": "subagent"}},
+           {"type": "session_meta", "payload": {"id": "p", "source": "vscode", "thread_source": "user"}},
+           event("task_complete"))
+    # 父文件较新，扫描顺序靠前；修复前较旧的子代理文件会在合并时覆盖它。
+    os.utime(parent, (2000, 2000))
+    os.utime(child, (1000, 1000))
+    sessions = SessionScanner(tmp_path, tmp_path).scan()["sessions"]
+    assert [(s["session_id"], s["task_status"], s["file_path"]) for s in sessions] == [
+        ("p", "rate_limited", str(parent))
+    ]
+
+
 def test_weekly_limit_is_respected():
     limits = {
         "primary": {"used_percent": 100, "resets_at": 200},

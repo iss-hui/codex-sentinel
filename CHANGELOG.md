@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.10] - 2026-10-25
+
+### Fixed
+- Keep the recovery target visible when Codex subagent rollouts replay the parent conversation's metadata. Previously such a rollout could replace the real conversation, so a recovery that hit the limit again stayed on "Waiting for updated quota time" and never resumed.
+- After a recovery run ends with a usage-limit error (including when the work finishes before the limit error arrives), keep waiting for the next quota window and resume the same conversation. Resume once a newer record with spare quota appears.
+
 ## [2.0.9] - 2026-10-19
 
 ### Added

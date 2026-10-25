@@ -107,6 +107,10 @@ class SessionScanner:
         kind = data.get("type")
         at = timestamp(data.get("timestamp"), fallback)
         if kind == "session_meta":
+            if s["session_id"]:
+                # 子代理和分叉聊天的 rollout 会在自己的元数据之后重放父聊天的
+                # session_meta；只认第一条，否则该文件会冒充父聊天并顶掉真实记录。
+                return
             s.update(
                 session_id=payload.get("id") or "",
                 cwd=payload.get("cwd") or "",

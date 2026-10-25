@@ -120,9 +120,15 @@ class RecoveryMonitor:
                         target.update(status="waiting", attempts=0, not_before=0)
                     target["reset_at"] = reset
                 elif target["status"] in ("waiting", "awaiting_limit"):
+                    observed = limits.get("observed_at", session.get("limits_at", 0)) if limits else 0
                     # A newer observation with spare quota confirms the old block cleared.
-                    if not exhausted and limits and limits.get("observed_at", session.get("limits_at", 0)) > target["limited_at"]:
-                        target["reset_at"] = target.get("reset_at") or now
+                    if not exhausted and limits and observed > target["limited_at"]:
+                        if target["status"] == "waiting":
+                            target["reset_at"] = target.get("reset_at") or now
+                        elif observed > target.get("finished_at", 0):
+                            # 恢复运行因限额失败后又出现了有余量的新记录，说明新窗口已开放；
+                            # 运行期间的旧记录早于 finished_at，不会触发立即重跑。
+                            target.update(status="waiting", attempts=0, not_before=0, reset_at=observed)
                     else:
                         target["reset_at"] = None
                 status = session.get("task_status")

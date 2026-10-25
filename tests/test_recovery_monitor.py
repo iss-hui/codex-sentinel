@@ -116,6 +116,34 @@ def test_quota_error_waits_for_new_reset_instead_of_immediate_loop(tmp_path):
     assert monitor.due_task(settings(), 3030) is not None
 
 
+def test_recovery_hitting_quota_keeps_waiting_for_next_window(tmp_path):
+    monitor = RecoveryMonitor(tmp_path)
+    observe(monitor, session(tmp_path))
+    task = monitor.due_task(settings(), 1030)
+    monitor.start(task, tmp_path / "run.log", 1030)
+    monitor.complete(task, {"code": 1, "error": "usage limit reached"}, 1040)
+    # 恢复运行中途的余量记录早于本次失败，不能立即重跑。
+    observe(monitor, session(tmp_path), now=1050, buckets={"codex": {"observed_at": 1035,
+        "primary": {"used_percent": 98, "resets_at": 1300}}})
+    assert monitor.target["status"] == "awaiting_limit"
+    assert monitor.due_task(settings(), 5000) is None
+    # 失败之后出现有余量的新记录：新窗口已开放，继续恢复同一聊天。
+    observe(monitor, session(tmp_path), now=1110, buckets={"codex": {"observed_at": 1100,
+        "primary": {"used_percent": 10, "resets_at": 1300}}})
+    assert monitor.due_task(settings(), 1129) is None
+    assert monitor.due_task(settings(), 1130).session_id == "latest"
+
+    # 本地记录写下了这次运行自己的限额错误（先完成工作、最后才报限额）时，
+    # 同一聊天成为新的目标，等到下一次重置后继续。
+    task = monitor.due_task(settings(), 1130)
+    monitor.start(task, tmp_path / "run2.log", 1130)
+    monitor.complete(task, {"code": 1, "error": "usage limit reached"}, 1200)
+    observe(monitor, session(tmp_path, at=1190, reset=3000), now=1210)
+    assert monitor.target["key"] == "latest:1190" and monitor.target["status"] == "waiting"
+    assert monitor.due_task(settings(), 3029) is None
+    assert monitor.due_task(settings(), 3030).session_id == "latest"
+
+
 def test_network_retry_has_backoff_and_stops_after_three_attempts(tmp_path):
     monitor = RecoveryMonitor(tmp_path)
     s = session(tmp_path)
