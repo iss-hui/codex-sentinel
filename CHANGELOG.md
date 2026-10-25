@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.11] - 2026-10-25
+
+### Fixed
+- Treat a usage-limit error as proof that a quota window is used up. Codex writes its last quota record before the rejected request, so it may still show a value such as 97%. The most-used window that resets after the error is now shown as 100%, and recovery gets a known reset time instead of waiting forever with no countdown.
+
 ## [2.0.10] - 2026-10-25
 
 ### Fixed

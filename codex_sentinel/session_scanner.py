@@ -100,6 +100,22 @@ class SessionScanner:
         return copy.deepcopy(session)
 
     @staticmethod
+    def _mark_exhausted(s, at):
+        # Codex 最后一条额度记录写在被拒绝的请求之前，可能仍显示 97% 等未满数值；
+        # 限额错误本身证明窗口已用完。把使用率最高、且在错误之后才重置的窗口记为 100%，
+        # 让概览和自动恢复拿到已知的重置时间。重置时间已过期的记录保持未知。
+        windows = [
+            (key, w) for key in ("primary", "secondary")
+            if isinstance(w := s["limits"].get(key), dict)
+            and (w.get("resets_at") or 0) > at
+        ]
+        if not windows or any((w.get("used_percent") or 0) >= 100 for _, w in windows):
+            return
+        key, window = max(windows, key=lambda pair: pair[1].get("used_percent") or 0)
+        s["limits"] = {**s["limits"], key: {**window, "used_percent": 100.0}}
+        s["limits_at"] = at
+
+    @staticmethod
     def _event(s, data, fallback):
         payload = data.get("payload") or {}
         if not isinstance(payload, dict):
@@ -149,6 +165,7 @@ class SessionScanner:
                     s.update(
                         task_status="rate_limited", had_rate_limit=True, limited_at=at
                     )
+                    SessionScanner._mark_exhausted(s, at)
                 elif event == "turn_aborted":
                     s["task_status"] = "interrupted"
                 else:

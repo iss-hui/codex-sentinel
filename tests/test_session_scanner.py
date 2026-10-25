@@ -142,6 +142,22 @@ def test_subagent_replaying_parent_metadata_does_not_hide_parent(tmp_path):
     ]
 
 
+def test_usage_error_marks_last_partial_window_exhausted(tmp_path):
+    path = tmp_path / "r.jsonl"
+    # 被拒绝前最后一条记录只有 97%，限额错误随后才写入。
+    append(path, {"type": "session_meta", "payload": {"id": "s1"}},
+           {"timestamp": "2026-10-02T00:59:00Z", "type": "event_msg", "payload": {
+               "type": "token_count", "rate_limits": {
+                   "primary": {"used_percent": 97, "resets_at": 1_900_000_000},
+                   "secondary": {"used_percent": 31, "resets_at": 1_900_500_000}}}},
+           event("task_complete", error={"codex_error_info": "usage_limit_exceeded"}))
+    snapshot = SessionScanner(tmp_path, tmp_path).scan()
+    bucket = snapshot["buckets"]["codex"]
+    assert bucket["primary"]["used_percent"] == 100
+    assert bucket["secondary"]["used_percent"] == 31
+    assert bucket["observed_at"] == snapshot["sessions"][0]["limited_at"]
+
+
 def test_weekly_limit_is_respected():
     limits = {
         "primary": {"used_percent": 100, "resets_at": 200},
