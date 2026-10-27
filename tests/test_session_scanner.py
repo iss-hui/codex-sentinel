@@ -142,6 +142,32 @@ def test_subagent_replaying_parent_metadata_does_not_hide_parent(tmp_path):
     ]
 
 
+def test_continued_rollout_segment_wins_over_older_segment(tmp_path):
+    import os
+
+    old = tmp_path / "old.jsonl"
+    new = tmp_path / "old_new.jsonl"
+    append(old, {"timestamp": "2026-10-01T00:00:00Z", "type": "session_meta", "payload": {"id": "s1"}},
+           event("task_complete"))
+    append(new, {"timestamp": "2026-10-02T00:00:00Z", "type": "session_meta", "payload": {"id": "s1"}},
+           {"timestamp": "2026-10-02T02:00:00Z", "type": "event_msg", "payload": {
+               "type": "task_complete", "error": {"codex_error_info": "usage_limit_exceeded"}}})
+    # Windows 上 mtime 可能滞后：让旧文件看起来更晚，它也不能覆盖续写文件。
+    os.utime(new, (1000, 1000))
+    os.utime(old, (2000, 2000))
+
+    def status():
+        sessions = SessionScanner(tmp_path, tmp_path).scan()["sessions"]
+        return [(s["session_id"], s["task_status"], s["file_path"]) for s in sessions]
+
+    assert status() == [("s1", "rate_limited", str(new))]
+    # 索引登记的当前文件优先于事件时间。
+    with sqlite3.connect(tmp_path / "state_5.sqlite") as conn:
+        conn.execute("CREATE TABLE threads (id TEXT, source TEXT, rollout_path TEXT)")
+        conn.execute("INSERT INTO threads VALUES ('s1','vscode',?)", ("\\\\?\\" + str(old),))
+    assert status() == [("s1", "completed", str(old))]
+
+
 def test_usage_error_marks_last_partial_window_exhausted(tmp_path):
     path = tmp_path / "r.jsonl"
     # 被拒绝前最后一条记录只有 97%，限额错误随后才写入。

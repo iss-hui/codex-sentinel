@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.12] - 2026-10-27
+
+### Fixed
+- Detect quota interruptions in conversations that Codex continued in a new rollout file. When several rollouts share a conversation ID, use the file Codex's index records as current, then the one with the latest activity. Lagging Windows file times no longer let an older file hide the interruption.
+
 ## [2.0.11] - 2026-10-25
 
 ### Fixed

@@ -122,6 +122,7 @@ class SessionScanner:
             return
         kind = data.get("type")
         at = timestamp(data.get("timestamp"), fallback)
+        s["event_at"] = max(s.get("event_at", 0.0), at)
         if kind == "session_meta":
             if s["session_id"]:
                 # 子代理和分叉聊天的 rollout 会在自己的元数据之后重放父聊天的

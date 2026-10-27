@@ -241,7 +241,26 @@ def _group_and_sort(sessions, state, projects, aliases, order):
 
 def read_session_catalog(codex_dir: Path, rollouts: list[dict], warnings: list[str]):
     rows, db_projects, db_roots = _read_index(codex_dir, warnings)
-    by_id = {s["session_id"]: s for s in rollouts}
+    # 新版 Codex 会把长对话续写到新的 rollout 文件，新旧文件的 session_id 相同。
+    # 优先采用索引登记的当前文件，其次取事件时间最新的一份；文件 mtime 在
+    # Windows 上可能滞后，不能决定取舍。
+    indexed = {
+        row["id"]: normalized_path(row["rollout_path"])
+        for row in rows
+        if row.get("id") and row.get("rollout_path")
+    }
+
+    def rank(s):
+        return (
+            normalized_path(s.get("file_path")) == indexed.get(s["session_id"]),
+            s.get("event_at", 0.0),
+        )
+
+    by_id = {}
+    for s in rollouts:
+        current = by_id.get(s["session_id"])
+        if current is None or rank(s) > rank(current):
+            by_id[s["session_id"]] = s
     hidden = set()
     for row in rows:
         sid = row.get("id")
