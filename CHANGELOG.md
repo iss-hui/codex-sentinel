@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.13] - 2026-11-03
+
+### Fixed
+- Ignore Codex desktop processes that are stuck while exiting (no threads left, but Windows still reports them as running). Taking over the desktop tried to suspend such a process, got `AccessDenied`, and the recovery failed before the CLI started with only `(pid=N)` as its error. Restoring the desktop could also mistake the leftover process for a running desktop and skip reopening Codex.
+- Desktop-close failures now name the process ID, executable path and error type.
+
+### Changed
+- Execution logs now record the CLI path, CLI version and command line. They also record each step before the CLI starts, the desktop processes that were closed, and a final result line with the exit code, error, elapsed time, CLI process ID and exit code. When a step fails, that line also gives the failed step, the error type and the traceback.
+
 ## [2.0.12] - 2026-10-27
 
 ### Fixed

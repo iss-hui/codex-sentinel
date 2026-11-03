@@ -132,11 +132,11 @@ def test_writable_execution_logs_requested_auto_review(tmp_path, monkeypatch):
     assert checked == [sys.executable]
     assert result["code"] == 0
     request = json.loads(log.read_text().splitlines()[0])
-    assert request == {
+    assert request.items() >= {
         "type": "sentinel.execution", "session_id": "chosen-thread",
         "sandbox": "workspace-write", "approval_policy": "on-request",
-        "approvals_reviewer": "auto_review",
-    }
+        "approvals_reviewer": "auto_review", "binary": sys.executable,
+    }.items()
 
 
 def test_zero_exit_without_completed_event_is_not_success(tmp_path, monkeypatch):
@@ -253,6 +253,7 @@ def test_handoff_reopens_only_after_cli_cleanup(tmp_path, monkeypatch):
     class Desktop:
         def __init__(self):
             self.closed_executables = []
+            self.closed_pids = []
 
         def close(self):
             calls.append("close")
@@ -300,6 +301,7 @@ def test_handoff_failure_restores_desktop(tmp_path, monkeypatch, failure):
     class Desktop:
         def __init__(self):
             self.closed_executables = []
+            self.closed_pids = []
 
         def close(self):
             self.closed_executables.append("codex-desktop")
@@ -327,6 +329,44 @@ def test_handoff_failure_restores_desktop(tmp_path, monkeypatch, failure):
         cancel=cancel,
     )
     assert result["code"] == (130 if failure == "cancel" else 1)
+    assert calls == ["reopen"]
+
+
+def test_desktop_close_failure_is_logged_with_phase_and_traceback(tmp_path, monkeypatch):
+    import json
+
+    import psutil
+
+    calls = []
+
+    class Desktop:
+        def __init__(self):
+            self.closed_executables = []
+            self.closed_pids = []
+
+        def close(self):
+            self.closed_executables.append("codex-desktop")
+            raise psutil.AccessDenied(1844)
+
+        def reopen(self):
+            calls.append("reopen")
+
+    monkeypatch.setattr("codex_sentinel.execution.DesktopHandoff", Desktop)
+    monkeypatch.setattr("codex_sentinel.execution.is_thread_locked", lambda _: True)
+    monkeypatch.setattr("codex_sentinel.execution.OwnedProcess.start", lambda *a, **kw:
+        pytest.fail("must not start the CLI after the desktop handoff failed"))
+    fake_program(tmp_path, monkeypatch, "")
+    task = QuotaScheduler(tmp_path).add_task("test", "hello", str(tmp_path), session_id="chosen")
+    log = tmp_path / "handoff.log"
+    result = execute_task(task, log, binary="fake", take_over_desktop=True)
+    # psutil 异常本身只输出 "(pid=1844)"，结果中必须带上异常类型。
+    assert result["code"] == 1 and result["error"] == "AccessDenied: (pid=1844)"
+    events = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+    assert [e["type"] for e in events] == ["sentinel.execution", "sentinel.phase", "sentinel.result"]
+    final = events[-1]
+    assert final["failed_phase"] == "closing_desktop" and final["error"] == result["error"]
+    assert final["error_type"] == "AccessDenied" and "AccessDenied" in final["traceback"]
+    assert final["cli_pid"] is None and final["desktop_closed"] == ["codex-desktop"]
     assert calls == ["reopen"]
 
 
@@ -470,7 +510,7 @@ def test_activation_mcp_timeout_never_sends_message(tmp_path, monkeypatch):
     assert result["code"] != 0 and result["session_id"] == ""
     assert "timed out twice" in result["error"]
     assert "activation was not started" in result["error"]
-    assert json.loads(log.read_text())["error"] == result["error"]
+    assert json.loads(log.read_text().splitlines()[0])["error"] == result["error"]
 
 
 @pytest.mark.parametrize("stdout, returncode", [("[]", 1), ('{"name":"docs"}', 0), ('[{}]', 0), ("not json", 0)])

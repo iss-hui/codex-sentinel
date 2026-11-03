@@ -7,13 +7,14 @@ import os
 import subprocess
 import threading
 import time
+import traceback
 from dataclasses import replace
 from pathlib import Path
 
 from codex_sentinel.desktop_handoff import DesktopHandoff
 from codex_sentinel.lock_manager import is_thread_locked, wait_for_lock_release
 from codex_sentinel.owned_process import OwnedProcess
-from codex_sentinel.resume import find_codex_binary
+from codex_sentinel.resume import _get_codex_version, find_codex_binary
 
 
 def build_command(task, binary):
@@ -130,6 +131,16 @@ class TurnEvents:
                 self.error = str(event.get("error") or event.get("message") or event)
 
 
+def _log_event(log, kind, **fields):
+    """向执行日志追加一行 sentinel 诊断事件。
+
+    CLI 的 stdout 也写入同一文件，只能在 CLI 启动前或进程组清理后调用，否则会与其输出交错。
+    """
+    event = {"type": f"sentinel.{kind}", "at": round(time.time(), 3), **fields}
+    log.write((json.dumps(event, ensure_ascii=False) + "\n").encode("utf-8"))
+    log.flush()
+
+
 def execute_task(
     task,
     log_path: Path,
@@ -162,6 +173,16 @@ def execute_task(
     owner, desktop = OwnedProcess(), DesktopHandoff()
     events = TurnEvents(task.session_id)
     timeout = timeout if timeout is not None else (120 if task.kind in ("kick", "activation") else 3600)
+    began, phase, failure = time.monotonic(), "prepare", None
+
+    def step(name, log=None):
+        # 记录当前阶段，异常时写入日志；仅在 CLI 启动前传入 log。
+        nonlocal phase
+        phase = name
+        if log is not None:
+            _log_event(log, "phase", phase=name)
+        progress(name)
+
     try:
         # Resolve the CLI and prepare its log before interrupting the desktop.
         command = build_command(task, binary or find_codex_binary())
@@ -177,6 +198,11 @@ def execute_task(
                 "sandbox": task.sandbox,
                 "approval_policy": "on-request" if task.sandbox == "workspace-write" else "never",
                 "approvals_reviewer": "auto_review" if task.sandbox == "workspace-write" else None,
+                "kind": task.kind,
+                "cwd": task.cwd,
+                "binary": command[0],
+                "cli_version": ".".join(map(str, _get_codex_version(command[0]))),
+                "command": command,
             }) + "\n").encode("utf-8"))
             log.flush()
             if task.session_id and is_thread_locked(task.session_id):
@@ -186,12 +212,14 @@ def execute_task(
                         error="Conversation is busy in Codex; waiting for its writer lock.",
                     )
                     return result
-                progress("closing_desktop")
+                step("closing_desktop", log)
                 if not desktop.close():
                     raise RuntimeError(
                         "Conversation is locked, but no Codex desktop instance was identified. No unrelated process was stopped."
                     )
-                progress("waiting_for_lock")
+                _log_event(log, "desktop", action="closed", pids=desktop.closed_pids,
+                           executables=desktop.closed_executables)
+                step("waiting_for_lock", log)
                 if not wait_for_lock_release(task.session_id, cancel=cancel):
                     if cancel.is_set():
                         result.update(code=130, error="Cancelled")
@@ -203,7 +231,7 @@ def execute_task(
             if cancel.is_set():
                 result.update(code=130, error="Cancelled")
                 return result
-            progress("running")
+            step("running", log)
             process = owner.start(
                 command,
                 cwd=task.cwd,
@@ -239,7 +267,7 @@ def execute_task(
                     if events.terminal:
                         if terminal_at is None:
                             terminal_at = time.monotonic()
-                            progress("cleanup")
+                            step("cleanup")
                         if (
                             ended
                             or cancel.is_set()
@@ -273,7 +301,9 @@ def execute_task(
                         break
                     cancel.wait(0.1)
     except Exception as exc:
-        result["error"] = str(exc)
+        # psutil 等异常的文本可能只有 "(pid=N)"，非自定义错误需保留异常类型。
+        result["error"] = str(exc) if isinstance(exc, RuntimeError) else f"{type(exc).__name__}: {exc}"
+        failure = {"failed_phase": phase, "error_type": type(exc).__name__, "traceback": traceback.format_exc()}
         if not log_path.exists():
             try:
                 log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -282,7 +312,7 @@ def execute_task(
                         "type": "sentinel.execution",
                         "session_id": task.session_id,
                         "sandbox": task.sandbox,
-                        "error": str(exc),
+                        "error": result["error"],
                     }) + "\n",
                     encoding="utf-8",
                 )
@@ -291,7 +321,7 @@ def execute_task(
     finally:
         result["session_id"] = task.session_id or events.session_id
         if owner.process is not None:
-            progress("cleanup")
+            step("cleanup")
             try:
                 owner.cleanup()
                 # Do not reopen the desktop while this CLI still owns the writer.
@@ -307,11 +337,24 @@ def execute_task(
                     result["error"] + "\n" if result["error"] else ""
                 ) + f"Process cleanup failed: {exc}"
         if desktop.closed_executables and result["cleanup_ok"]:
-            progress("reopening_desktop")
+            step("reopening_desktop")
             try:
                 desktop.reopen()
             except Exception as exc:
                 result["error"] = (
                     result["error"] + "\n" if result["error"] else ""
                 ) + f"Could not reopen Codex: {exc}"
+        if log_path.exists():
+            # 放在进程组清理之后追加，避免与 CLI 输出交错；写日志失败不影响执行结果。
+            try:
+                with log_path.open("ab") as log:
+                    _log_event(
+                        log, "result", phase=phase, code=result["code"], error=result["error"],
+                        cleanup_ok=result["cleanup_ok"], elapsed=round(time.monotonic() - began, 3),
+                        cli_pid=owner.process.pid if owner.process else None,
+                        cli_exit_code=owner.process.returncode if owner.process else None,
+                        desktop_closed=desktop.closed_executables, **(failure or {}),
+                    )
+            except Exception:
+                pass
     return result
